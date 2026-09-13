@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/priyatam19/-invariant.group/blob/main/docs/trace-schema.json",
+  "title": "LPTA trace record",
+  "description": "One line of the JSONL trace emitted by src/LPTAInstrumentation.cpp: one object per pass invocation. schema_version follows independent SemVer from the tool itself — see the versioning note below. A new OPTIONAL field is a minor bump; a renamed/removed field or a changed meaning for an existing field is a major bump, and both old and new meanings must be documented in RESEARCH.md/CHANGELOG.md for at least one release cycle.",
+  "type": "object",
+  "required": ["pass", "unit_kind", "unit_name", "invalidated", "seq"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "SemVer of this schema. Records without this field predate versioning (schema_version 1.0.0, retroactively)."
+    },
+    "pass": {
+      "type": "string",
+      "description": "LLVM pass name as reported by PassInstrumentation, e.g. 'SimplifyCFGPass'."
+    },
+    "unit_kind": {
+      "type": "string",
+      "enum": ["function", "loop", "module", "scc", "unknown"],
+      "description": "Granularity of the IR unit this pass ran on."
+    },
+    "unit_name": {
+      "type": "string",
+      "description": "Identifies the IR unit: bare function name for 'function' AND 'loop' kind (see the report layer's report_group_key() for why a viewer needs unit_kind too, not unit_name alone, to distinguish them), '<module:NAME>' for module, '<scc:...>' for SCC, '<unknown>' otherwise."
+    },
+    "invalidated": {
+      "type": "boolean",
+      "description": "True if the pass invalidated its IR unit outright (e.g. deleted a function). When true, none of the after_*/ir_changed/cfg_changed fields are present — the unit could not be safely re-printed."
+    },
+    "ir_changed": {
+      "type": "boolean",
+      "description": "Before/after printed IR text differs. Absent when invalidated=true."
+    },
+    "before_instr_count": { "type": "integer", "minimum": 0 },
+    "after_instr_count": { "type": "integer", "minimum": 0 },
+    "before_bb_count": { "type": "integer", "minimum": 0 },
+    "after_bb_count": { "type": "integer", "minimum": 0 },
+    "lines_added": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Line-level LCS diff of printed IR text; 0 when ir_changed=false. Falls back to a multiset approximation for module-scale text (see diffLines()'s size cap in LPTAInstrumentation.cpp) — treat as approximate above roughly 2000x2000 lines."
+    },
+    "lines_removed": { "type": "integer", "minimum": 0 },
+    "cfg_changed": {
+      "type": "boolean",
+      "description": "Proxy signal: true if before/after basic-block count OR total successor-edge count differs. Not exact CFG isomorphism (see ROADMAP.md Phase 1 known limitations)."
+    },
+    "all_preserved": { "type": "boolean", "description": "PreservedAnalyses::areAllPreserved() at the end of this pass." },
+    "dt_preserved": { "type": "boolean", "description": "PreservedAnalyses::getChecker<DominatorTreeAnalysis>().preserved()." },
+    "loop_info_preserved": { "type": "boolean", "description": "PreservedAnalyses::getChecker<LoopAnalysis>().preserved()." },
+    "cfg_analyses_set_preserved": { "type": "boolean", "description": "PreservedAnalyses::allAnalysesInSetPreserved<CFGAnalyses>()." },
+    "incremental_update_candidate": {
+      "type": "boolean",
+      "description": "Derived signal: cfg_changed && !dt_preserved. KNOWN COARSE HEURISTIC — see RESEARCH.md §5 and ROADMAP.md Phase 2: this over-fires when DominatorTree simply hadn't been computed yet (nothing live to preserve), not only when a live DT was wastefully discarded. Do not treat a true value here as a confirmed bug without Phase 2's analysis-liveness tracking."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonically increasing per-process sequence number, assigned at emit time. Use this to order events within one trace file; do not assume it's stable across separate runs/LLVM versions."
+    }
+  }
+}

@@ -1,0 +1,41 @@
+name: CodeQL
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 7 * * 1" # weekly, Monday 07:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["c-cpp", "python"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+      # C++ needs an actual build for CodeQL to trace through; reuse the
+      # LLVM 18 leg since CodeQL doesn't care which LLVM version, only that
+      # the plugin compiles.
+      - name: Install LLVM 18 for the C++ build
+        if: matrix.language == 'c-cpp'
+        run: sudo apt-get update && sudo apt-get install -y llvm-18-dev cmake ninja-build
+      - name: Build plugin
+        if: matrix.language == 'c-cpp'
+        run: |
+          cmake -S . -B build -G Ninja -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm
+          cmake --build build --parallel 2
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"

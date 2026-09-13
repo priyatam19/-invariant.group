@@ -8,10 +8,14 @@ DominatorTree was not preserved and the pass didn't just fall back to
 `PreservedAnalyses::all()`** — exactly the "conservative invalidation instead
 of incremental update" pattern described in [initial-idea.txt](initial-idea.txt).
 
-See [RESEARCH.md](RESEARCH.md) for the API/prior-art writeup and
-[ROADMAP.md](ROADMAP.md) for what's built vs. planned.
+See [RESEARCH.md](RESEARCH.md) for the API/prior-art writeup,
+[ROADMAP.md](ROADMAP.md) for what's built vs. planned, and
+[PRODUCTIONIZATION.md](PRODUCTIONIZATION.md) for the SDLC/CI/community/UI/
+multi-agent plan.
 See [MIGRATION.md](MIGRATION.md) for the reproduced LLVM 18 baseline, known
 measurement limitations, and the LLVM 23 migration plan.
+
+Contributing? Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Status
 
@@ -59,7 +63,10 @@ test/run_demo.sh
 
 ## Trace format
 
-One JSON object per pass invocation, newline-delimited. Key fields:
+One JSON object per pass invocation, newline-delimited. Full contract (types,
+required fields, versioning rule): [docs/trace-schema.json](docs/trace-schema.json).
+Validate any trace against it with `python3 tools/validate_trace.py trace.jsonl`
+(`pip install jsonschema` first). Key fields:
 
 - `pass`, `unit_kind` (`function`/`loop`/`module`/`scc`), `unit_name`
 - `ir_changed`, `before_instr_count`/`after_instr_count`, `before_bb_count`/`after_bb_count`

@@ -45,7 +45,7 @@ struct ResolvedUnit {
   const Function *F = nullptr; // set when we could pin down a single function
   const Module *M = nullptr;   // always set when F is set (F's parent)
   std::string Name;            // function name, or "<module:NAME>"
-  StringRef Kind;               // "function" | "loop" | "module" | "scc" | "unknown"
+  StringRef Kind; // "function" | "loop" | "module" | "scc" | "unknown"
 };
 
 const Function *unwrapToFunction(const Any &IR) {
@@ -153,7 +153,7 @@ void diffLines(StringRef Before, StringRef After, unsigned &Added,
   for (size_t i = 1; i <= N; ++i) {
     for (size_t j = 1; j <= M; ++j) {
       Curr[j] = B[i - 1] == A[j - 1] ? Prev[j - 1] + 1
-                                      : std::max(Prev[j], Curr[j - 1]);
+                                     : std::max(Prev[j], Curr[j - 1]);
     }
     std::swap(Prev, Curr);
   }
@@ -242,7 +242,8 @@ void beforePass(StringRef PassID, const Any &IR) {
   ResolvedUnit RU = resolveUnit(IR);
   bool Traced = sink().shouldTrace(RU);
   Snapshot Before = Traced ? takeSnapshot(RU) : Snapshot{};
-  pendingStack().push_back({PassID.str(), std::move(RU), std::move(Before), Traced});
+  pendingStack().push_back(
+      {PassID.str(), std::move(RU), std::move(Before), Traced});
 }
 
 void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
@@ -320,8 +321,9 @@ void afterPassInvalidated(StringRef PassID, const PreservedAnalyses &PA) {
 void registerLPTACallbacks(PassBuilder &PB) {
   PassInstrumentationCallbacks *PIC = PB.getPassInstrumentationCallbacks();
   if (!PIC) {
-    errs() << "LPTA: no PassInstrumentationCallbacks available; instrumentation "
-              "disabled\n";
+    errs()
+        << "LPTA: no PassInstrumentationCallbacks available; instrumentation "
+           "disabled\n";
     return;
   }
   PIC->registerBeforeNonSkippedPassCallback(beforePass);
