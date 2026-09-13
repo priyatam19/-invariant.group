@@ -1,0 +1,43 @@
+name: Lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - run: clang-format-18 --style=file --dry-run --Werror src/*.cpp
+
+  python-format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      # ruff format --check enforces whole-file formatting, unlike LLVM's
+      # own `darker` (changed-lines-only). That's a deliberate difference:
+      # this repo is small enough that whole-file formatting doesn't create
+      # the "unrelated diff noise" problem darker exists to solve upstream.
+      # See PRODUCTIONIZATION.md §2.1 for why darker matters specifically
+      # if code ever moves toward llvm-project's own conventions.
+      - run: ruff format --check tools/*.py
+      # `ruff check` (real linting, not just formatting) is intentionally
+      # NOT enabled yet: as of this workflow's introduction it immediately
+      # flags an unused `html` import in tools/lpta_report.py that #4 (a
+      # sibling PR) already removes. Turning on full linting here before #4
+      # merges would mean two open PRs racing to fix the same finding.
+      # Enable it as a fast-follow once #4 lands.

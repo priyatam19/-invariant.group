@@ -1,0 +1,26 @@
+name: Trace schema contract
+
+# No LLVM build here on purpose: this is the check a UI-only or tools/-only
+# contributor gets green on without ever installing LLVM. See
+# PRODUCTIONIZATION.md §4 and §5.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-fixtures:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install jsonschema
+      - name: Validate all committed fixtures against the schema
+        run: python3 tools/validate_trace.py test/fixtures/*.jsonl

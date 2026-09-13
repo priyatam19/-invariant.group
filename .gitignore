@@ -2,6 +2,7 @@ build/
 research/llvm-project/
 test/out/
 *.jsonl
+!test/fixtures/*.jsonl
 *.o
 *.so
 build-*/

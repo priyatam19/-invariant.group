@@ -1,0 +1,24 @@
+# Maps to the tracks defined in CONTRIBUTING.md's branch-naming section and
+# PRODUCTIONIZATION.md §6. Everything currently routes to the same owner —
+# this file exists now so review routing is automatic the moment there's a
+# second real (distinct-identity) contributor, without needing a rewrite.
+
+# engine
+/src/                @priyatam19
+/CMakeLists.txt      @priyatam19
+ROADMAP.md           @priyatam19
+
+# ui — intentionally independent of /src; a UI-only contributor should
+# never need engine sign-off for changes confined to this path
+/tools/              @priyatam19
+/test/fixtures/      @priyatam19
+docs/trace-schema.json @priyatam19
+
+# ci / governance
+/.github/            @priyatam19
+CONTRIBUTING.md      @priyatam19
+CODEOWNERS           @priyatam19
+
+# docs
+RESEARCH.md            @priyatam19
+PRODUCTIONIZATION.md   @priyatam19

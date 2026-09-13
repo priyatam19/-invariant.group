@@ -5,6 +5,7 @@ IR unit, with per-pass change magnitude and analysis-preservation flags.
 
 Usage: lpta_report.py <trace.jsonl> [-o out.html]
 """
+
 import argparse
 import json
 import sys
@@ -238,7 +239,9 @@ def render_html(payload):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("trace", help="path to JSONL trace produced by LPTAInstrumentation")
-    ap.add_argument("-o", "--output", default="lpta_report.html", help="output HTML path")
+    ap.add_argument(
+        "-o", "--output", default="lpta_report.html", help="output HTML path"
+    )
     args = ap.parse_args()
 
     records = load_records(args.trace)
@@ -251,9 +254,11 @@ def main():
         f.write(render_html(payload))
 
     s = payload["summary"]
-    print(f"{s['total_events']} events across {s['units']} IR units "
-          f"({s['ir_changed_events']} changed IR, "
-          f"{s['incremental_update_candidates']} incremental-update candidates)")
+    print(
+        f"{s['total_events']} events across {s['units']} IR units "
+        f"({s['ir_changed_events']} changed IR, "
+        f"{s['incremental_update_candidates']} incremental-update candidates)"
+    )
     print(f"wrote {args.output}")
 
 
