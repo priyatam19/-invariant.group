@@ -1,0 +1,32 @@
+
+PROBLEM
+LLVM applies a large sequence of optimization passes, but understanding how the complete pipeline transforms a program is difficult. LLVM provides individual diagnostics and debugging options, but developers still lack a unified view that correlates which pass changed the IR, what changed, and how significant that change was. As a result, investigating optimization and performance regressions often requires manually collecting and comparing IR from multiple stages of the pipeline.
+GOAL
+Build an LLVM-based analysis tool — the LLVM Pass Transformation Analyzer (LPTA) — that records IR state before and after each optimization pass and presents the resulting transformation history as a single, explainable view. The tool should connect individual passes to measurable, quantified changes in the IR, making the optimization pipeline's behavior traceable rather than opaque.
+EXPECTED OUTCOME
+The tool will give compiler developers and performance engineers an explainable, evidence-backed view of LLVM's optimization pipeline: which passes ran, what they changed, how significant each change was, and how it affected final codegen. This turns manual, multi-stage IR comparison into a repeatable workflow for understanding optimization behavior and — where cross-run comparison is implemented — investigating performance regressions directly.
+
+
+Our Proposal
+Automated IR Change Tracking and Analysis Preservation/Invalidation Engine
+by !invariant.group
+Historically, the Legacy Pass Manager in LLVM implicitly assumed analyses were
+preserved, causing silent miscompilations when developers forgot to update
+dependencies. The New Pass Manager solves this by implicitly invalidating everything
+by default. This fixed the correctness problem but introduced a steep compile-time
+penalty, while still remaining highly manual and trust-based. Pass authors typically
+choose one of two flawed approaches:
+• Conservative: Return `PreservedAnalyses::none()`, forcing expensive results,
+such as DominatorTree, LoopInfo, ScalarEvolution, MemorySSA, and alias
+analysis, to be wastefully recomputed multiple times per function in real
+production pipelines
+• Optimistic: Preserve analyses and attempt fragile manual updates, producing
+stale results that the framework then trusts blindly leading to subtle
+miscompilations and hard-to-debug runtime failures.
+We propose a solution that seeks to ease this tension
+
+
+One idea to work upon-
+By the way, what I was planning to investigate was that, 
+Often in LLVM Opt Passes, the Pass Authors choose to invalidate the Analyses, because they modified the Dominator Tree which affects everything else, and although the Dominator Tree can be updated by making explicit calls to the APIs to reflect those changes, most Pass Authors just choose the easy path to invalidate the Analysis, but if we could analyze the API usages in the Passes we could add explicit calls to update the Dominator Tree instead of invalidating the whole Passes because it is much faster and more efficient.
+So I was planning to investigate how pervasive is this, how to detect and track such changes and then add those API Calls and verify for any breakages

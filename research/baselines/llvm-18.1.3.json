@@ -1,0 +1,64 @@
+{
+  "review_date": "2026-09-13",
+  "status": "reproduced_existing_implementation",
+  "project_revision": null,
+  "project_revision_note": "Project directory was not a Git repository at review time; source hashes identify this baseline.",
+  "llvm_version": "18.1.3",
+  "clang_version": "Ubuntu clang version 18.1.3 (1ubuntu1)",
+  "llvm_dir": "/usr/lib/llvm-18/lib/cmake/llvm",
+  "clang": "/usr/lib/llvm-18/bin/clang",
+  "opt": "/usr/lib/llvm-18/bin/opt",
+  "build_compiler": "GNU C++ 13.3.0",
+  "cmake_version": "4.2.1",
+  "build_type": "Release",
+  "target": "x86_64-pc-linux-gnu",
+  "pipeline": "default<O2>",
+  "input": "test/sample.c",
+  "input_clang_flags": ["-S", "-emit-llvm", "-O0", "-Xclang", "-disable-O0-optnone"],
+  "sha256": {
+    "test/sample.c": "59197441118f93165c7646610c32e669eabdf05250f8293c737a64239d81e1c1",
+    "src/LPTAInstrumentation.cpp": "d6364ed66ba8b84c248c1b45147f5398d70ac151cc552e6e929df069ddf874c8",
+    "tools/lpta_report.py": "75452854d45840b077b299f5a8b03e59da88cb147711c17b7ca1aee4578070dc",
+    "CMakeLists.txt": "7c63ab7a8d21c7d5a8f1ffbc1ca0c85fb8016ac1e4ba7af74775fc14e10f7a57"
+  },
+  "counts": {
+    "events": 336,
+    "ir_changed_events": 51,
+    "incremental_update_candidates": 15,
+    "distinct_report_unit_names": 7,
+    "event_unit_kinds": {"function": 267, "loop": 11, "module": 31, "scc": 27},
+    "candidate_unit_kinds": {"function": 7, "module": 2, "scc": 6},
+    "simplify_cfg_candidate_events": 3,
+    "pass_manager_or_adaptor_candidate_events": 12,
+    "cfg_set_preserved_but_dt_flag_false": 14,
+    "unknown_unit_events": 0
+  },
+  "checks": {
+    "fresh_configure_and_build": "passed",
+    "demo_and_html_generation": "passed",
+    "verify_each": "passed",
+    "optimized_ir_identical_with_and_without_plugin": "passed",
+    "contiguous_trace_sequence": "passed",
+    "filtered_records_match_full_trace_except_seq": "passed",
+    "filter_event_counts": {"branchy": 89, "helper,loopy": 189, "__lpta_missing_function__": 0},
+    "browser_rendering": "not_checked"
+  },
+  "reproduce_demo_commands": [
+    "cmake -S . -B /tmp/lpta-review-llvm18-build -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm -DCMAKE_BUILD_TYPE=Release",
+    "cmake --build /tmp/lpta-review-llvm18-build -j2",
+    "CLANG=/usr/lib/llvm-18/bin/clang OPT=/usr/lib/llvm-18/bin/opt OUT_DIR=/tmp/lpta-review-llvm18-output PLUGIN=/tmp/lpta-review-llvm18-build/LPTAInstrumentation.so bash test/run_demo.sh"
+  ],
+  "local_artifacts": {
+    "build": "/tmp/lpta-review-llvm18-build",
+    "trace": "/tmp/lpta-review-llvm18-output/trace.jsonl",
+    "report": "/tmp/lpta-review-llvm18-output/report.html"
+  },
+  "limitations": [
+    "One sample only; no broader correctness or performance claim.",
+    "Candidate flags use the original coarse heuristic without analysis cache tracking.",
+    "Wrapper events include changes already observed in nested passes.",
+    "Preservation flags do not fully account for preservation sets or IR scope.",
+    "LLVM 23.1.1 has not been built or tested with this plugin yet.",
+    "The existing static source survey used LLVM main cff226a5716e4bc3589d4869066ea6687ed142ce, not LLVM 18."
+  ]
+}
