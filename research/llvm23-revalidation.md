@@ -103,7 +103,7 @@ Source triage of the release's raw candidates:
 | `Instrumentation/MemorySanitizer.cpp` | `removeUnreachableBlocks` at 1266 omits DT; PA starts from `none()` at 810. Other instrumentation changes require analysis-specific review. |
 | `IPO/OpenMPOpt.cpp` | The merging path still initializes `DT=nullptr` before DT-shaped `SplitBlock` calls (1087/1096). Some early `none()` returns precede that path, so counting every return as the same opportunity is invalid. |
 | `IPO/GlobalOpt.cpp` | Excluded from the blanket-invalidation category: FAM invalidation is per changed function at 2851, with proxy/CFG-set preservation afterward at 2861/2865. Manual bookkeeping alone is not proof of a soundness bug. |
-| `Utils/LoopVersioning.cpp` | Newly in this release's raw intersection. FAM-owned DT at 321 is passed through versioning, `SplitBlock` at 98, cloning, and explicit `changeImmediateDominator` at 126; changed-path `none()` at 324. The old incremental-update regex misses this maintenance style. Requires full correctness review. |
+| `Utils/LoopVersioning.cpp` | Newly in this release's raw intersection. FAM-owned DT at 321 is passed through versioning, `SplitBlock` at 98, cloning, and explicit `changeImmediateDominator` at 124; changed-path `none()` at 324. The old incremental-update regex misses this maintenance style. Requires full correctness review. |
 
 After excluding GlobalOpt, the raw sets contain 11 and 12 remaining files,
 respectively. These are triage sets, not validated counts of fixes. The original
