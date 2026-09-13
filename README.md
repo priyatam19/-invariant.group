@@ -15,40 +15,53 @@ measurement limitations, and the LLVM 23 migration plan.
 
 ## Status
 
-Phase 1 (instrumentation + quantified trace + HTML report) is built and
-working end to end against LLVM 18. See ROADMAP.md for what's next.
+Instrumentation, quantified traces, and HTML reports are verified on LLVM
+**23.1.1** and the LLVM **18.1.3** baseline. See
+[the migration revalidation](research/llvm23-revalidation.md) for results and
+known heuristic limitations. Analysis cache tracking and automated LLVM source
+patches remain planned features.
 
-## Build
+## Build and test
 
-Requires `llvm-18-dev` (or another LLVM `-dev` package with matching
-`opt`/`clang`; adjust `LLVM_DIR` accordingly — this machine has 14/15/17/18/20
-installed side by side, so auto-detection is not reliable).
+Requires Linux, CMake 3.21+, Python 3.10+, a C++17 compiler, and matching LLVM
+headers, libraries, Clang, and opt. To install the official stable LLVM 23.1.1
+Linux x86-64 development archive locally (approximately 2 GB download):
 
 ```bash
-cmake -B build -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j"$(nproc)"
+bash tools/install_llvm23.sh "$HOME/.local/llvm-23.1.1"
+cmake -S . -B build -DLLVM_DIR="$HOME/.local/llvm-23.1.1/lib/cmake/llvm"
+cmake --build build --parallel 2
+ctest --test-dir build --output-on-failure
+bash test/run_demo.sh
 ```
 
-Produces `build/LPTAInstrumentation.so`.
-
-## Run
+The installer requires `curl`, `tar`, `zstd`, and `sha256sum`, verifies the
+pinned release checksum, and refuses to overwrite an existing directory.
+With no explicit `LLVM_DIR`, CMake searches for LLVM 23. The demo uses the
+Clang and opt selected at configuration time. Use a separate build for LLVM 18:
 
 ```bash
-clang -S -emit-llvm -O0 -Xclang -disable-O0-optnone -o input.ll input.c
+cmake -S . -B build-18 -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm
+cmake --build build-18 --parallel 2
+ctest --test-dir build-18 --output-on-failure
+BUILD_DIR="$PWD/build-18" OUT_DIR="$PWD/test/out/llvm18" bash test/run_demo.sh
+```
 
+The plugin is `build/LPTAInstrumentation.so`. For a custom input, choose the
+same installation used to build that plugin:
+
+```bash
+LPTA_LLVM_PREFIX="$HOME/.local/llvm-23.1.1"
+"$LPTA_LLVM_PREFIX/bin/clang" -S -emit-llvm -O0 -Xclang -disable-O0-optnone -o input.ll input.c
 LPTA_TRACE_OUT=trace.jsonl \
-  opt -load-pass-plugin=./build/LPTAInstrumentation.so \
-      -passes='default<O2>' -disable-output input.ll
-
+  "$LPTA_LLVM_PREFIX/bin/opt" -load-pass-plugin=./build/LPTAInstrumentation.so \
+    -passes='default<O2>' -disable-output input.ll
 python3 tools/lpta_report.py trace.jsonl -o report.html
 ```
 
-Or just run the smoke test, which does all of the above against
-[test/sample.c](test/sample.c):
-
-```bash
-test/run_demo.sh
-```
+The demo accepts `BUILD_DIR` and `OUT_DIR`. Optional `CLANG` and `OPT`
+overrides must report the configured LLVM version. Custom `PLUGIN` overrides
+must be built against that same LLVM installation.
 
 ### Environment variables
 

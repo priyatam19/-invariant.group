@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "llvm_commit": "cff226a5716e4bc3589d4869066ea6687ed142ce",
+  "method": "historical-file-level-regex; comments and helpers can match; no dataflow proof",
+  "script_sha256": "b981b22bd53d45c71a5d2be6f7ac6457bb56a4eaffd289ae549c331a300621a9",
+  "patterns": {
+    "none": "PreservedAnalyses::none\\(\\)",
+    "incremental_dt": "DomTreeUpdater|DT->applyUpdates\\(|DT->insertEdge\\(|DT->deleteEdge\\(|DominatorTree::insertEdge|\\.applyUpdates\\(",
+    "cfg_utility": "SplitBlock\\(|SplitBlockPredecessors\\(|MergeBlockIntoPredecessor\\(|removeUnreachableBlocks\\(|RemoveSuccessor\\(|SplitEdge\\(|SplitCriticalEdge\\(|MergeBasicBlockIntoOnlyPred\\(",
+    "run_same_line": "PreservedAnalyses [A-Za-z_:<>]*::run\\(",
+    "run_next_line": "^PreservedAnalyses\\n[^\\n]*::run\\("
+  },
+  "counts": {
+    "transform_cpp_files": 341,
+    "none_files": 83,
+    "none_occurrences": 106,
+    "incremental_dt_files": 51,
+    "cfg_utility_files": 53,
+    "raw_candidate_files": 12,
+    "approximate_run_implementations": 236
+  },
+  "raw_candidates": {
+    "Coroutines/CoroSplit.cpp": {
+      "sha256": "8ece8157862c8e91da0e5f462ffda0d98354c2a03788272bdf69c7391670e2fa",
+      "none_lines": [
+        2414
+      ],
+      "cfg_utility_lines": [
+        1214,
+        1520,
+        2351
+      ]
+    },
+    "IPO/Attributor.cpp": {
+      "sha256": "f819b65dc28d3b398ad09221e47395a7b4d6c545a2df528b5d6e689fda084608",
+      "none_lines": [
+        4110
+      ],
+      "cfg_utility_lines": [
+        2593
+      ]
+    },
+    "IPO/DeadArgumentElimination.cpp": {
+      "sha256": "0a4aac2dc98b01b565ac9cdff0aca9c68471fc9c0c2a819a3cb54860d86f326e",
+      "none_lines": [
+        1118
+      ],
+      "cfg_utility_lines": [
+        961
+      ]
+    },
+    "IPO/GlobalOpt.cpp": {
+      "sha256": "5074b3a88f441f194b65d7289d1e225523f02eff3c3d29611a00f45c1f875dcf",
+      "none_lines": [
+        2846,
+        2854
+      ],
+      "cfg_utility_lines": [
+        1971,
+        2858
+      ]
+    },
+    "IPO/OpenMPOpt.cpp": {
+      "sha256": "4a53a8e0c7862c4605773391d81d7259ff78f30e6046c3539389ac52778d2c94",
+      "none_lines": [
+        6005,
+        6053,
+        6124
+      ],
+      "cfg_utility_lines": [
+        1167,
+        1193,
+        1195,
+        1197,
+        1208,
+        1301,
+        1303,
+        1304,
+        4113,
+        4116,
+        4119,
+        4122,
+        4127
+      ]
+    },
+    "Instrumentation/ControlHeightReduction.cpp": {
+      "sha256": "57cfc2b5885e697e836b658c92d539482215149fc2a44811aa66686bd63cf61f",
+      "none_lines": [
+        2128
+      ],
+      "cfg_utility_lines": [
+        1744
+      ]
+    },
+    "Instrumentation/GCOVProfiling.cpp": {
+      "sha256": "20ff4d1e3e3b45e802ceb3fb439821022a4ca764461bf1e1383d88473406f7db",
+      "none_lines": [
+        580
+      ],
+      "cfg_utility_lines": [
+        723
+      ]
+    },
+    "Instrumentation/MemorySanitizer.cpp": {
+      "sha256": "141c027868e5d7cb681ed650c099afb23959825a80b2ba56454fa21360c75692",
+      "none_lines": [
+        810,
+        812
+      ],
+      "cfg_utility_lines": [
+        1266
+      ]
+    },
+    "Instrumentation/PGOInstrumentation.cpp": {
+      "sha256": "3f0d9f273eff0ffa4f7e2c6b9a2f7c72128ebe9a2242a5c10592b072bab79683",
+      "none_lines": [
+        2081,
+        2453
+      ],
+      "cfg_utility_lines": [
+        878
+      ]
+    },
+    "Scalar/FlattenCFGPass.cpp": {
+      "sha256": "fa0c672535bfc09fe262dfa678f667d8981c1e7ab2cb811e3835b30633c547b6",
+      "none_lines": [
+        105
+      ],
+      "cfg_utility_lines": [
+        90,
+        102
+      ]
+    },
+    "Scalar/GVNSink.cpp": {
+      "sha256": "5f51f665f42cc6e0405b5c60e82a1dc897d7aec09ef59d62c6ba24c88d262606",
+      "none_lines": [
+        852
+      ],
+      "cfg_utility_lines": [
+        777
+      ]
+    },
+    "Scalar/PlaceSafepoints.cpp": {
+      "sha256": "94c84f3fcf2bac79e6d24958a53da60736dc93392dc38aa4283335e6f92e74cf",
+      "none_lines": [
+        384
+      ],
+      "cfg_utility_lines": [
+        273,
+        343
+      ]
+    }
+  }
+}

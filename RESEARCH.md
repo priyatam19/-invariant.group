@@ -1,5 +1,11 @@
 # Research notes
 
+The original API checks below concern LLVM 18.1.3, while the original static
+survey concerns a development-main commit. The
+[LLVM 23.1.1 revalidation](research/llvm23-revalidation.md) now records the stable
+release results and corrects the survey's raw-versus-reviewed file counts.
+Historical candidate counts below are triage evidence, not confirmed bugs.
+
 ## 1. The problem, restated precisely
 
 Two related but distinct problems from [initial-idea.txt](initial-idea.txt):

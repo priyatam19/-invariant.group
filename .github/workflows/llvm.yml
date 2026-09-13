@@ -1,0 +1,40 @@
+name: LLVM compatibility
+on:
+  pull_request:
+  push:
+    branches: [main, build/llvm-23]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        llvm: ['18', '23.1.1']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ python3 curl zstd
+      - name: Install LLVM 18 baseline
+        if: matrix.llvm == '18'
+        run: |
+          sudo apt-get install -y llvm-18-dev clang-18
+          echo "LPTA_LLVM_PREFIX=/usr/lib/llvm-18" >> "$GITHUB_ENV"
+      - name: Install stable LLVM 23.1.1
+        if: matrix.llvm == '23.1.1'
+        run: |
+          bash tools/install_llvm23.sh "$RUNNER_TEMP/llvm-23.1.1"
+          echo "LPTA_LLVM_PREFIX=$RUNNER_TEMP/llvm-23.1.1" >> "$GITHUB_ENV"
+      - name: Build and verify
+        run: |
+          cmake -S . -B build -G Ninja -DLLVM_DIR="$LPTA_LLVM_PREFIX/lib/cmake/llvm"
+          cmake --build build --parallel 2
+          ctest --test-dir build --output-on-failure
+          bash test/run_demo.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lpta-demo-llvm-${{ matrix.llvm }}
+          path: test/out/
