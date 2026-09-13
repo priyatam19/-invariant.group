@@ -248,8 +248,15 @@ void beforePass(StringRef PassID, const Any &IR) {
 void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
                      bool Invalidated) {
   auto &Stack = pendingStack();
-  if (Stack.empty())
-    return; // Should not happen; guard against mismatched instrumentation.
+  if (Stack.empty()) {
+    // Before/After calls are expected to be strictly paired (see the stack
+    // discipline comment above beforePass); this fires only if that
+    // assumption breaks on some LLVM version's callback ordering, in which
+    // case the trace is silently missing events unless this is visible.
+    errs() << "LPTA: after-pass callback for '" << PassID
+           << "' with no matching before-pass snapshot; dropping event\n";
+    return;
+  }
   PendingEntry Entry = std::move(Stack.back());
   Stack.pop_back();
   if (!Entry.Traced)
@@ -298,12 +305,13 @@ void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
       CFGChanged = V->getAsBoolean().value_or(false);
 
     // The core LPTA signal: the CFG demonstrably changed, yet DominatorTree
-    // was not preserved and the pass didn't just bail out to "all()". This
-    // is exactly the pattern the project proposal wants surfaced: a place
-    // where an explicit DomTreeUpdater call could likely have replaced a
-    // blanket invalidation.
-    Rec["incremental_update_candidate"] =
-        CFGChanged && !DTPreserved && !AllPreserved;
+    // was not preserved. This is exactly the pattern the project proposal
+    // wants surfaced: a place where an explicit DomTreeUpdater call could
+    // likely have replaced a blanket invalidation. (Note: !DTPreserved
+    // already implies !AllPreserved, since getChecker<T>().preserved() is
+    // true whenever PreservedAnalyses::all() was returned — see
+    // RESEARCH.md §2.2 — so AllPreserved is kept only for its own field.)
+    Rec["incremental_update_candidate"] = CFGChanged && !DTPreserved;
   }
 
   sink().emit(std::move(Rec));
