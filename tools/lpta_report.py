@@ -6,7 +6,6 @@ IR unit, with per-pass change magnitude and analysis-preservation flags.
 Usage: lpta_report.py <trace.jsonl> [-o out.html]
 """
 import argparse
-import html
 import json
 import sys
 from collections import defaultdict, Counter
@@ -26,10 +25,26 @@ def load_records(path):
     return records
 
 
+def report_group_key(r):
+    """Grouping key for the report's per-unit sections.
+
+    unit_name alone collides for "loop" and "function" kind events on the
+    same function: LPTAInstrumentation.cpp's resolveUnit() sets unit_name to
+    the enclosing function's bare name for both (see RESEARCH.md), so a Loop
+    pass event and a Function pass event on `foo` both report unit_name=foo.
+    module/scc/unknown already self-disambiguate (their unit_name is wrapped
+    as "<module:...>"/"<scc:...>"), so only loop needs a suffix here.
+    """
+    name = r.get("unit_name", "?")
+    if r.get("unit_kind") == "loop":
+        return f"{name} [loop]"
+    return name
+
+
 def build_report(records, source_path):
     by_unit = defaultdict(list)
     for r in records:
-        by_unit[r.get("unit_name", "?")].append(r)
+        by_unit[report_group_key(r)].append(r)
     for unit in by_unit.values():
         unit.sort(key=lambda r: r.get("seq", 0))
 
@@ -209,7 +224,15 @@ renderUnits();
 
 
 def render_html(payload):
-    return PAGE_TEMPLATE.replace("__DATA_JSON__", json.dumps(payload))
+    # payload can contain arbitrary strings from the trace (function/module
+    # names, file paths) that end up inside a <script> block. json.dumps
+    # alone doesn't know it's embedded in HTML, so a name containing the
+    # literal substring "</script>" would close the tag early and inject
+    # markup. Escaping '<', '>', '&' as \u-escapes (valid inside a JSON
+    # string/JS literal) neutralizes that without touching JSON validity.
+    data = json.dumps(payload)
+    data = data.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    return PAGE_TEMPLATE.replace("__DATA_JSON__", data)
 
 
 def main():
