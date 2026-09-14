@@ -545,3 +545,94 @@ actually happens":
   find the machinery exists; it cannot, by itself, show how often the
   machinery is actually exercised on real programs — that needs LPTA's own
   dynamic trace, cross-referenced the way it was here).
+
+## 10. How impactful are the 13 bare-`none()` passes, really?
+
+§9 found 13 IR-changing passes that unconditionally return
+`PreservedAnalyses::none()` when they change something. A natural next
+question: on real code, how often do they actually run, and how much
+execution time do they account for? Answering this required a new
+capability — `LPTAInstrumentation.cpp` only timed *analysis* recomputation
+(§8 Tier 2), not *pass* execution itself. Added `pass_cpu_time_us` to
+`record_type: "pass"` records (schema 2.1.0 → 2.2.0, minor/additive):
+timing starts after LPTA's own before-snapshot work and stops before any
+after-snapshot work, isolating the pass's own `Pass::run()` call the same
+way analysis timing already isolated `AnalysisPass::run()`.
+
+Ran the 8-program `llvm-test-suite` corpus already built for §8 (Whetstone,
+Linpack, an FFT, a Huffman coder, etc. — deliberately reused rather than
+adding more programs, to keep the run small) through the updated plugin:
+15,256 total pass invocations, 22,996,856µs (~23s) of total measured
+pass-execution CPU time.
+
+**The 13 passes, mapped to their PassInstrumentation class names and matched
+against the trace:**
+
+| registry name | class | invocations | total pass time (µs) | times it actually invalidated (`ir_changed`) |
+|---|---|---:|---:|---:|
+| constmerge | `ConstantMergePass` | 8 | 31 | 0 |
+| coro-cleanup | `CoroCleanupPass` | 8 | 10 | 0 |
+| deadargelim | `DeadArgumentEliminationPass` | 8 | 109 | 1 |
+| elim-avail-extern | `EliminateAvailableExternallyPass` | 8 | 9 | 0 |
+| globaldce | `GlobalDCEPass` | 16 | 243 | 2 |
+| inferattrs | `InferFunctionAttrsPass` | 8 | 513 | 8 |
+| lower-expect | `LowerExpectIntrinsicPass` | 127 | 133 | 0 |
+| openmp-opt-cgscc | `OpenMPOptCGSCCPass` | 126 | 154 | 0 |
+| coro-split | `CoroSplitPass` | 126 | 122 | 0 |
+| annotation2metadata | `Annotation2MetadataPass` | 8 | 30 | 0 |
+| coro-elide | `CoroElidePass` | 126 | 98 | 0 |
+| forceattrs | `ForceFunctionAttrsPass` | 8 | 13 | 0 |
+| openmp-opt | `OpenMPOptPass` | 8 | 51 | 0 |
+
+**Two findings, and the second sharpens the first considerably:**
+
+1. **Collectively, tiny.** 585 total invocations (3.83% of the corpus's
+   15,256 pass invocations) and 1,516µs of total execution time — **0.007%**
+   of the corpus's total measured pass-execution CPU time. Even taken at
+   face value (every invocation counted), these 13 passes are not a
+   meaningful direct execution-time cost on their own.
+2. **Most of them never even exercise the `none()` path on this kind of
+   code.** These passes return `none()` only *when they change something*
+   (§9's own classification: "unconditionally-`none()`-**on-change**"). Of
+   585 invocations, only **11 actually had `ir_changed=true`** — the rest
+   quietly returned `all()` because there was nothing to do. `coro-split`/
+   `coro-elide`/`openmp-opt-cgscc` each ran **126 times** (once per SCC
+   visited by the CGSCC pass manager) and **never once** changed anything,
+   because none of these 8 real C programs contain coroutines or OpenMP
+   pragmas — the features that would give these passes something to do. Of
+   the 11 real invalidations, **8 are a single pass**
+   (`InferFunctionAttrsPass`, which reliably adds function attributes once
+   per module) — total time across all 11 genuinely-invalidating calls:
+   **572µs, 0.0025% of the corpus total**. And every one of those 11 is
+   `unit_kind=module` with `cfg_changed=false` — none of them ever touch
+   the CFG, so `incremental_update_candidate` would never fire for any of
+   them regardless (that signal requires `cfg_changed=true`).
+
+**Answer, precisely stated**: on typical single-TU, non-coroutine,
+non-OpenMP C code, these 13 passes are not a meaningful optimization
+target. Ten of the thirteen essentially never trigger their invalidating
+path at all; the three that do (`deadargelim`, `globaldce`, `inferattrs`)
+cost a fraction of a fraction of a percent of total pass time even when
+they fire, and none of their real invalidations involve a CFG change in
+the first place. This is a genuinely different conclusion than §4's DT-
+focused candidates (`ControlHeightReduction.cpp` etc.), which *do* change
+the CFG while holding a live, already-correct DominatorTree — the
+"impactful, worth patching" candidates identified so far are elsewhere,
+not in this list of 13.
+
+**Caveat**: this measures the passes' own direct execution time, not the
+*downstream* cost their invalidation forces on subsequent passes needing
+to recompute DominatorTree/LoopInfo/MemorySSA/ScalarEvolution from
+scratch (§8 Tier 2's actual subject). Given all 11 real invalidations here
+are module-granularity with no CFG change, and given how early in the
+pipeline `inferattrs`/`deadargelim`/`globaldce` run (before most
+function-level analyses would typically even be computed yet), a
+downstream-cost analysis would very plausibly show the same "not
+impactful" conclusion — but that is inference from this data, not a
+number this report measured directly. Attributing downstream recompute
+cost to a *specific* upstream invalidating pass (rather than the
+per-function cumulative counters §8 already tracks) is not yet built and
+would be the natural next step if this needed to be conclusive rather
+than strongly suggestive.
+
+Reproduction: `cmake --build build && for f in <8 .ll files>; do LPTA_TRACE_OUT=$f.jsonl opt -load-pass-plugin=./build/LPTAInstrumentation.so -passes='default<O2>' -disable-output $f; done`, then filter `record_type=="pass"` rows by `pass` name and sum `pass_cpu_time_us`.

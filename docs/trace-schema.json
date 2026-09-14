@@ -35,6 +35,11 @@
       "type": "string",
       "description": "record_type='pass' only. LLVM pass name as reported by PassInstrumentation, e.g. 'SimplifyCFGPass'."
     },
+    "pass_cpu_time_us": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "record_type='pass' only (2.2.0+). Process CPU time (user+sys, via llvm::sys::Process::GetTimeUsage) spent in the pass's own Pass::run() call -- distinct from 'analysis' records' cpu_time_us, which times analysis (re)computation, not pass execution. Timing starts after LPTA's own before-snapshot work and stops before any after-snapshot work, so this excludes LPTA's own instrumentation overhead on both sides (same bracketing discipline as analysis timing)."
+    },
     "invalidated": {
       "type": "boolean",
       "description": "record_type='pass' only. True if the pass invalidated its IR unit outright (e.g. deleted a function). When true, none of the after_*/ir_changed/cfg_changed fields are present — the unit could not be safely re-printed."
