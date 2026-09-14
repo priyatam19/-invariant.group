@@ -1,0 +1,148 @@
+{
+  "before_llvm": "18.1.3",
+  "after_llvm": "23.1.1",
+  "comparison": "same-ir",
+  "aggregation": "pass-and-unit-kind; repeated and enclosing invocations remain inclusive",
+  "total_delta": {
+    "events": 29,
+    "ir_changed_events": 1,
+    "incremental_update_candidates": 0
+  },
+  "pass_changes": [
+    {
+      "unit_kind": "function",
+      "pass": "DFAJumpThreadingPass",
+      "delta": {
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "function",
+      "pass": "DropUnnecessaryAssumesPass",
+      "delta": {
+        "events": 6,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "function",
+      "pass": "EntryExitInstrumenterPass",
+      "delta": {
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "function",
+      "pass": "ExpandMemCmpPass",
+      "delta": {
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "function",
+      "pass": "InstCombinePass",
+      "delta": {
+        "events": 0,
+        "changed": -1,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "function",
+      "pass": "JumpTableToSwitchPass",
+      "delta": {
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "function",
+      "pass": "MergeICmpsPass",
+      "delta": {
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "function",
+      "pass": "SCCPPass",
+      "delta": {
+        "events": 0,
+        "changed": 1,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "loop",
+      "pass": "ExtraLoopPassManager<llvm::ShouldRunExtraSimpleLoopUnswitch>",
+      "delta": {
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "loop",
+      "pass": "SimpleLoopUnswitchPass",
+      "delta": {
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "module",
+      "pass": "AllocTokenPass",
+      "delta": {
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "module",
+      "pass": "IPSCCPPass",
+      "delta": {
+        "events": 0,
+        "changed": 1,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "module",
+      "pass": "LowerCommentStringPass",
+      "delta": {
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "module",
+      "pass": "MemProfRemoveInfo",
+      "delta": {
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      }
+    },
+    {
+      "unit_kind": "scc",
+      "pass": "CoroAnnotationElidePass",
+      "delta": {
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      }
+    }
+  ]
+}

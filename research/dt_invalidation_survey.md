@@ -10,7 +10,16 @@ incremental update and preserving the analysis.
 **Repo snapshot analyzed:** `llvm/llvm-project` @ `cff226a5716e4bc3589d4869066ea6687ed142ce`
 (HEAD of `main` at clone time, 2026-09-13).
 
-All counts below are reproducible from the exact commands shown. Nothing was invented.
+**Correction from migration review (2026-09-13):** the raw intersection below
+contains 12 files, including `GlobalOpt.cpp`. Excluding GlobalOpt leaves
+11 unique files in the manually listed candidates. The numbered list repeats
+PGOInstrumentation for two passes. The claimed 14 return sites are not a
+validated count of distinct optimization opportunities; an early return need
+not share a CFG-mutation path. Also, 83 files / 236 pass implementations is
+not a valid percentage of passes. Treat the original narrative below as a
+historical survey with these corrections. See
+[the LLVM 23.1.1 revalidation](llvm23-revalidation.md) and its reproducible
+manifests for the updated results.
 
 ---
 

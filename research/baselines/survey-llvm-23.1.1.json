@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "llvm_commit": "6dfe1677ab8dffbc6ec13d53a1e0215d75147689",
+  "method": "historical-file-level-regex; comments and helpers can match; no dataflow proof",
+  "script_sha256": "b981b22bd53d45c71a5d2be6f7ac6457bb56a4eaffd289ae549c331a300621a9",
+  "patterns": {
+    "none": "PreservedAnalyses::none\\(\\)",
+    "incremental_dt": "DomTreeUpdater|DT->applyUpdates\\(|DT->insertEdge\\(|DT->deleteEdge\\(|DominatorTree::insertEdge|\\.applyUpdates\\(",
+    "cfg_utility": "SplitBlock\\(|SplitBlockPredecessors\\(|MergeBlockIntoPredecessor\\(|removeUnreachableBlocks\\(|RemoveSuccessor\\(|SplitEdge\\(|SplitCriticalEdge\\(|MergeBasicBlockIntoOnlyPred\\(",
+    "run_same_line": "PreservedAnalyses [A-Za-z_:<>]*::run\\(",
+    "run_next_line": "^PreservedAnalyses\\n[^\\n]*::run\\("
+  },
+  "counts": {
+    "transform_cpp_files": 332,
+    "none_files": 84,
+    "none_occurrences": 107,
+    "incremental_dt_files": 50,
+    "cfg_utility_files": 53,
+    "raw_candidate_files": 13,
+    "approximate_run_implementations": 236
+  },
+  "raw_candidates": {
+    "Coroutines/CoroSplit.cpp": {
+      "sha256": "38fec514f29ab5db4df45b9f32019a6e80dc644e6d5befc720f70eb27e243858",
+      "none_lines": [
+        2345
+      ],
+      "cfg_utility_lines": [
+        1191,
+        1497,
+        2305
+      ]
+    },
+    "IPO/Attributor.cpp": {
+      "sha256": "b077e5bab79246b4fd925d01fff0f9fec18b37a9f363caf667c4282701542013",
+      "none_lines": [
+        4109
+      ],
+      "cfg_utility_lines": [
+        2593
+      ]
+    },
+    "IPO/DeadArgumentElimination.cpp": {
+      "sha256": "a0a402e68335f45b3f0733cc75a547a393a6704f839bdf0f3f3bd0bd68e4518e",
+      "none_lines": [
+        1118
+      ],
+      "cfg_utility_lines": [
+        961
+      ]
+    },
+    "IPO/GlobalOpt.cpp": {
+      "sha256": "8b75482cbef00570b632eaa5083b93438dd8149eb1a2b3c6889123ee51bc83f4",
+      "none_lines": [
+        2851,
+        2859
+      ],
+      "cfg_utility_lines": [
+        1975,
+        2863
+      ]
+    },
+    "IPO/OpenMPOpt.cpp": {
+      "sha256": "59397e2aab1a438b218913a5fe38fbf82f5d015cf7a36b94edf0c44a140c19ae",
+      "none_lines": [
+        5829,
+        5876,
+        5946
+      ],
+      "cfg_utility_lines": [
+        1096,
+        1122,
+        1124,
+        1126,
+        1137,
+        1230,
+        1232,
+        1233,
+        3994,
+        3997,
+        4000,
+        4003,
+        4008
+      ]
+    },
+    "Instrumentation/ControlHeightReduction.cpp": {
+      "sha256": "57cfc2b5885e697e836b658c92d539482215149fc2a44811aa66686bd63cf61f",
+      "none_lines": [
+        2128
+      ],
+      "cfg_utility_lines": [
+        1744
+      ]
+    },
+    "Instrumentation/GCOVProfiling.cpp": {
+      "sha256": "b86ace9a51fa20bc8bf1e16944ebd3a05ed56383823c2c6f679d9a560acb96b8",
+      "none_lines": [
+        580
+      ],
+      "cfg_utility_lines": [
+        723
+      ]
+    },
+    "Instrumentation/MemorySanitizer.cpp": {
+      "sha256": "03e07a8d493d82d716f112a23fc54e57dbb36717dd6f1028a30609e609d22c9c",
+      "none_lines": [
+        810,
+        812
+      ],
+      "cfg_utility_lines": [
+        1266
+      ]
+    },
+    "Instrumentation/PGOInstrumentation.cpp": {
+      "sha256": "ae5d9abbffaea77a1e4435371830b3dfc6042c36963f09dd82fc2223c8051286",
+      "none_lines": [
+        2081,
+        2451
+      ],
+      "cfg_utility_lines": [
+        878
+      ]
+    },
+    "Scalar/FlattenCFGPass.cpp": {
+      "sha256": "fa0c672535bfc09fe262dfa678f667d8981c1e7ab2cb811e3835b30633c547b6",
+      "none_lines": [
+        105
+      ],
+      "cfg_utility_lines": [
+        90,
+        102
+      ]
+    },
+    "Scalar/GVNSink.cpp": {
+      "sha256": "ff62cb04547600affea11e35b488c9542c9e8fc9fd1ad27e874238b74668f8ec",
+      "none_lines": [
+        849
+      ],
+      "cfg_utility_lines": [
+        774
+      ]
+    },
+    "Scalar/PlaceSafepoints.cpp": {
+      "sha256": "4038baeceebf7c9a851e8baf5ac19806170009cebfea94d864e5f78fc81d3fbd",
+      "none_lines": [
+        384
+      ],
+      "cfg_utility_lines": [
+        273,
+        343
+      ]
+    },
+    "Utils/LoopVersioning.cpp": {
+      "sha256": "596aaa53b9c359fc2bfff92f357dc3fd6655ec26830905fbb1c81d8bca614c55",
+      "none_lines": [
+        324
+      ],
+      "cfg_utility_lines": [
+        98
+      ]
+    }
+  }
+}

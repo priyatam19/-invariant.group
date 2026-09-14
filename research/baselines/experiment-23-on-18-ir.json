@@ -1,0 +1,902 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "commands": [
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/llvm-config",
+        "--version"
+      ],
+      "env": {}
+    },
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/llvm-config",
+        "--version"
+      ],
+      "env": {}
+    },
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/clang",
+        "--version"
+      ],
+      "env": {}
+    },
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/opt",
+        "--version"
+      ],
+      "env": {}
+    },
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "env": {}
+    },
+    {
+      "argv": [
+        "git",
+        "status",
+        "--porcelain"
+      ],
+      "env": {}
+    },
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/llvm-config",
+        "--cmakedir"
+      ],
+      "env": {}
+    },
+    {
+      "argv": [
+        "cmake",
+        "-S",
+        "/home/fuzzserver/lpta-worktrees/llvm23",
+        "-B",
+        "/tmp/lpta-port-23/build",
+        "-DLLVM_DIR=/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/lib/cmake/llvm",
+        "-DCMAKE_BUILD_TYPE=Release"
+      ],
+      "env": {}
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "/tmp/lpta-port-23/build",
+        "-j",
+        "2"
+      ],
+      "env": {}
+    },
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/opt",
+        "-passes=default<O2>",
+        "-load-pass-plugin=/tmp/lpta-port-23/build/LPTAInstrumentation.so",
+        "-disable-output",
+        "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/input.ll"
+      ],
+      "env": {
+        "LPTA_TRACE_OUT": "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/trace.jsonl"
+      }
+    },
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/opt",
+        "-passes=default<O2>",
+        "-verify-each",
+        "-S",
+        "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/input.ll",
+        "-o",
+        "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/plain.ll"
+      ],
+      "env": {
+        "LPTA_TRACE_OUT": "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/verified-trace.jsonl"
+      }
+    },
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/opt",
+        "-passes=default<O2>",
+        "-load-pass-plugin=/tmp/lpta-port-23/build/LPTAInstrumentation.so",
+        "-verify-each",
+        "-S",
+        "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/input.ll",
+        "-o",
+        "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/instrumented.ll"
+      ],
+      "env": {
+        "LPTA_TRACE_OUT": "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/verified-trace.jsonl"
+      }
+    },
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/opt",
+        "-passes=default<O2>",
+        "-load-pass-plugin=/tmp/lpta-port-23/build/LPTAInstrumentation.so",
+        "-disable-output",
+        "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/input.ll"
+      ],
+      "env": {
+        "LPTA_TRACE_OUT": "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/filter-0.jsonl",
+        "LPTA_FILTER_FUNC": "branchy"
+      }
+    },
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/opt",
+        "-passes=default<O2>",
+        "-load-pass-plugin=/tmp/lpta-port-23/build/LPTAInstrumentation.so",
+        "-disable-output",
+        "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/input.ll"
+      ],
+      "env": {
+        "LPTA_TRACE_OUT": "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/filter-1.jsonl",
+        "LPTA_FILTER_FUNC": "branchy,helper"
+      }
+    },
+    {
+      "argv": [
+        "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin/opt",
+        "-passes=default<O2>",
+        "-load-pass-plugin=/tmp/lpta-port-23/build/LPTAInstrumentation.so",
+        "-disable-output",
+        "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/input.ll"
+      ],
+      "env": {
+        "LPTA_TRACE_OUT": "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/filter-2.jsonl",
+        "LPTA_FILTER_FUNC": "__lpta_missing_function__"
+      }
+    },
+    {
+      "argv": [
+        "/usr/bin/python3",
+        "/home/fuzzserver/lpta-worktrees/llvm23/tools/lpta_report.py",
+        "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/trace.jsonl",
+        "-o",
+        "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm23-on-18-ir/report.html"
+      ],
+      "env": {}
+    }
+  ],
+  "checks": {
+    "trace_schema_and_sequence": true,
+    "verify_each_and_identical_optimized_ir": true,
+    "function_filters": true,
+    "html_generation": true
+  },
+  "heuristic": "cfg-counts-and-direct-dt-preservation-v1",
+  "llvm_version": "23.1.1",
+  "tool_versions": {
+    "llvm-config": "23.1.1",
+    "clang": "clang version 23.1.1 (https://github.com/llvm/llvm-project 6dfe1677ab8dffbc6ec13d53a1e0215d75147689)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1/bin",
+    "opt": "LLVM (http://llvm.org/):\n  LLVM version 23.1.1\n  Optimized build.\n  Default target: x86_64-unknown-linux-gnu\n  Host CPU: raptorlake"
+  },
+  "llvm_prefix": "/home/fuzzserver/.local/share/lpta/toolchains/llvm-23.1.1",
+  "pipeline": "default<O2>",
+  "input": {
+    "path": "/home/fuzzserver/.local/share/lpta/experiments/7e51b31/llvm18/input.ll",
+    "sha256": "22ba238afd5502ae90f69e09e1f057832977a0b871293798360212602cc9d320"
+  },
+  "source_hashes": {
+    "CMakeLists.txt": "4f0f0d7fcccd1a2e45280e1487e4bd36702ac0d5b705e7b308a7e532098cfda0",
+    "src/LPTAInstrumentation.cpp": "82f87e56ceaa0ecb2eddd60e6ec0fd9cef29dd7af76d067fe2b1dec097214b0a",
+    "tools/lpta_report.py": "75452854d45840b077b299f5a8b03e59da88cb147711c17b7ca1aee4578070dc"
+  },
+  "runner_sha256": "6e759b34e8879ccc499529f1a584f3a12f3e94922e0f2b7d7911af2a380d7477",
+  "source_revision": "7e51b311901d2d32091548dcafc81c062871424f",
+  "source_status": "",
+  "input_mode": "existing-ir",
+  "ir_sha256": "22ba238afd5502ae90f69e09e1f057832977a0b871293798360212602cc9d320",
+  "summary": {
+    "events": 365,
+    "ir_changed_events": 52,
+    "incremental_update_candidates": 15,
+    "unit_kinds": {
+      "module": 34,
+      "function": 288,
+      "scc": 30,
+      "loop": 13
+    },
+    "by_pass_and_kind": [
+      {
+        "unit_kind": "function",
+        "pass": "ADCEPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "AggressiveInstCombinePass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "AlignmentFromAssumptionsPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "AnnotationRemarksPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "BDCEPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "ConstraintEliminationPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "CoroElidePass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "CorrelatedValuePropagationPass",
+        "events": 6,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "DFAJumpThreadingPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "DSEPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "DivRemPairsPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "DropUnnecessaryAssumesPass",
+        "events": 6,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "EarlyCSEPass",
+        "events": 6,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "EntryExitInstrumenterPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "ExpandMemCmpPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "Float2IntPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "FunctionToLoopPassAdaptor",
+        "events": 15,
+        "changed": 2,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "GVNPass",
+        "events": 3,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "InferAlignmentPass",
+        "events": 6,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "InjectTLIMappings",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "InstCombinePass",
+        "events": 24,
+        "changed": 4,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "InstSimplifyPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "InvalidateAnalysisPass<llvm::AAManager>",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "InvalidateAnalysisPass<llvm::ShouldNotRunFunctionPassesAnalysis>",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "JumpTableToSwitchPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "JumpThreadingPass",
+        "events": 6,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "LCSSAPass",
+        "events": 15,
+        "changed": 2,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "LibCallsShrinkWrapPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "LoopDistributePass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "LoopLoadEliminationPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "LoopSimplifyPass",
+        "events": 15,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "LoopSinkPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "LoopUnrollPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "LoopVectorizePass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "LowerConstantIntrinsicsPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "LowerExpectIntrinsicPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "MemCpyOptPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "MergeICmpsPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "MergedLoadStoreMotionPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "MoveAutoInitPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "PassManager<Function>",
+        "events": 27,
+        "changed": 10,
+        "candidates": 4
+      },
+      {
+        "unit_kind": "function",
+        "pass": "PromotePass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "ReassociatePass",
+        "events": 3,
+        "changed": 2,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "RequireAnalysisPass<llvm::ShouldNotRunFunctionPassesAnalysis, llvm::Function, llvm::AnalysisManager<Function>>",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "SCCPPass",
+        "events": 3,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "SLPVectorizerPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "SROAPass",
+        "events": 12,
+        "changed": 3,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "SimplifyCFGPass",
+        "events": 24,
+        "changed": 3,
+        "candidates": 3
+      },
+      {
+        "unit_kind": "function",
+        "pass": "SpeculativeExecutionPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "TailCallElimPass",
+        "events": 6,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "VectorCombinePass",
+        "events": 6,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "function",
+        "pass": "WarnMissedTransformationsPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "loop",
+        "pass": "ExtraLoopPassManager<llvm::ShouldRunExtraSimpleLoopUnswitch>",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "loop",
+        "pass": "IndVarSimplifyPass",
+        "events": 1,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "loop",
+        "pass": "LICMPass",
+        "events": 2,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "loop",
+        "pass": "LoopDeletionPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "loop",
+        "pass": "LoopIdiomRecognizePass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "loop",
+        "pass": "LoopInstSimplifyPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "loop",
+        "pass": "LoopRotatePass",
+        "events": 1,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "loop",
+        "pass": "LoopSimplifyCFGPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "loop",
+        "pass": "PassManager<Loop, LoopAnalysisManager, LoopStandardAnalysisResults &, LPMUpdater &>",
+        "events": 2,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "loop",
+        "pass": "SimpleLoopUnswitchPass",
+        "events": 2,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "AllocTokenPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "AlwaysInlinerPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "Annotation2MetadataPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "CGProfilePass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "CalledValuePropagationPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "ConstantMergePass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "CoroCleanupPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "CoroEarlyPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "DeadArgumentEliminationPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "EliminateAvailableExternallyPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "ForceFunctionAttrsPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "GlobalDCEPass",
+        "events": 2,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "GlobalOptPass",
+        "events": 2,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "IPSCCPPass",
+        "events": 1,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "InferFunctionAttrsPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "LowerCommentStringPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "MemProfRemoveInfo",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "ModuleInlinerWrapperPass",
+        "events": 1,
+        "changed": 1,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "ModuleToFunctionPassAdaptor",
+        "events": 6,
+        "changed": 2,
+        "candidates": 1
+      },
+      {
+        "unit_kind": "module",
+        "pass": "ModuleToPostOrderCGSCCPassAdaptor",
+        "events": 1,
+        "changed": 1,
+        "candidates": 1
+      },
+      {
+        "unit_kind": "module",
+        "pass": "OpenMPOptPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "RecomputeGlobalsAAPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "RelLookupTableConverterPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "RequireAnalysisPass<llvm::GlobalsAA, llvm::Module, llvm::AnalysisManager<Module>>",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "RequireAnalysisPass<llvm::ProfileSummaryAnalysis, llvm::Module, llvm::AnalysisManager<Module>>",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "ReversePostOrderFunctionAttrsPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "module",
+        "pass": "VerifierPass",
+        "events": 1,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "scc",
+        "pass": "CGSCCToFunctionPassAdaptor",
+        "events": 6,
+        "changed": 3,
+        "candidates": 2
+      },
+      {
+        "unit_kind": "scc",
+        "pass": "CoroAnnotationElidePass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "scc",
+        "pass": "CoroSplitPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "scc",
+        "pass": "DevirtSCCRepeatedPass",
+        "events": 3,
+        "changed": 3,
+        "candidates": 2
+      },
+      {
+        "unit_kind": "scc",
+        "pass": "InlinerPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "scc",
+        "pass": "OpenMPOptCGSCCPass",
+        "events": 3,
+        "changed": 0,
+        "candidates": 0
+      },
+      {
+        "unit_kind": "scc",
+        "pass": "PassManager<LazyCallGraph::SCC, CGSCCAnalysisManager, LazyCallGraph &, CGSCCUpdateResult &>",
+        "events": 3,
+        "changed": 3,
+        "candidates": 2
+      },
+      {
+        "unit_kind": "scc",
+        "pass": "PostOrderFunctionAttrsPass",
+        "events": 6,
+        "changed": 3,
+        "candidates": 0
+      }
+    ]
+  },
+  "filter_event_counts": {
+    "branchy": 96,
+    "branchy,helper": 192,
+    "__lpta_missing_function__": 0
+  },
+  "artifacts": {
+    "input.ll": "22ba238afd5502ae90f69e09e1f057832977a0b871293798360212602cc9d320",
+    "trace.jsonl": "09ff406fea3a38f90cada2795716d9532ef07715c9d5e51adbe2cec44896c5da",
+    "plain.ll": "f61cb06bed5acc30ada13ec47133d713e02540c27a9e780d249936e3f751096a",
+    "instrumented.ll": "f61cb06bed5acc30ada13ec47133d713e02540c27a9e780d249936e3f751096a",
+    "report.html": "6493ed8ed6adc5a1cbbe1969d29d982781bdd5a06bf3d389392879c620677113"
+  }
+}

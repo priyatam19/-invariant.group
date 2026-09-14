@@ -2,7 +2,9 @@
 
 Review date: 2026-09-13. This document records the existing implementation,
 checks performed during the review, and the work needed for the migration.
-LLVM 23 has **not** been built or tested with LPTA yet.
+LLVM 23.1.1 has now been built and tested alongside LLVM 18.1.3. See
+[the revalidation results](research/llvm23-revalidation.md). The initial review
+and proposed work breakdown below are retained as historical context.
 
 ## Current implementation
 
