@@ -316,6 +316,53 @@ were worked out in conversation; captured here for durability):
   wasted-recompute signal is
   real and discrete, but the *timing* numbers at this scale are indicative
   only, not conclusive.
+
+  **Second result, on 8 real programs from `llvm-test-suite`**
+  (`llvm/llvm-test-suite` @ `4b2c892865cbbb05ee996c88794a58e17d3adb81`,
+  `SingleSource/Benchmarks/{Linpack/linpack-pc.c, Misc/oourafft.c,
+  Misc/whetstone.c, Misc/richards_benchmark.c, McGill/chomp.c,
+  CoyoteBench/{fftbench.cpp,huffbench.c,almabench.c}}` — classic CPU
+  benchmarks: Whetstone, Linpack, an FFT, a Huffman coder, chosen because
+  they each compile standalone with no extra include paths and are large
+  enough to move past the demo sample's noise floor, 900-4700 lines of `-O0`
+  IR each): **66.2% of all measured analysis-recompute CPU time (9,037us
+  total, across 1,882 individual recomputes) was spent on wasted
+  recomputes** — not a small-N artifact, an order of magnitude more
+  measured CPU time than the demo sample. Per-analysis breakdown makes the
+  §6 cascade argument concrete rather than theoretical:
+
+  | Analysis | Computes | Wasted | Total CPU | Wasted CPU | % wasted |
+  |---|---|---|---|---|---|
+  | DominatorTreeAnalysis | 659 | 518 | 1,854us | 1,490us | 80.4% |
+  | LoopAnalysis | 404 | 264 | 1,621us | 988us | 61.0% |
+  | MemorySSAAnalysis | 344 | 207 | **3,680us** | 2,053us | 55.8% |
+  | ScalarEvolutionAnalysis | 475 | 335 | 1,882us | 1,448us | 76.9% |
+
+  MemorySSA has the *lowest* wasted-fraction of the four but the *highest*
+  absolute CPU cost by a wide margin (nearly double DT's) — exactly the §6
+  prediction that the expensive part isn't DT's own recomputation (fast,
+  near-linear) but the cascade into genuinely costly dependents. DT itself
+  shows the highest waste fraction (80.4%) because it sits at the root of
+  that cascade and gets invalidated most often.
+
+  Reproduction:
+  ```bash
+  git clone --depth 1 --filter=blob:none --sparse \
+    https://github.com/llvm/llvm-test-suite.git research/llvm-test-suite
+  cd research/llvm-test-suite && git sparse-checkout set SingleSource/Benchmarks
+  # compile each file: clang -S -emit-llvm -O0 -Xclang -disable-O0-optnone <file> -o <file>.ll
+  # run each: LPTA_TRACE_OUT=<name>.jsonl opt -load-pass-plugin=./build/LPTAInstrumentation.so \
+  #   -passes='default<O2>' -disable-output <file>.ll
+  python3 tools/lpta_timing_report.py *.jsonl
+  ```
+  Caveat carried forward from Tier 1: this is 8 files, not a statistically
+  representative sample of "real programs" in general, and per-analysis
+  costs will vary with how loop/memory/induction-variable-heavy a given
+  program is — Whetstone/Linpack/FFT/Huffman are numerically dense by
+  design, which plausibly inflates ScalarEvolution's share specifically.
+  Treat 66.2% as "large and real on this corpus," not as a universal
+  constant.
+
 - **Tier 3** — A/B with a real source patch (gated on Phase 3/4, not yet
   buildable): the only tier that actually proves a specific fix helps.
   Checked whether instrumentation alone could simulate this (have the
