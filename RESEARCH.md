@@ -280,10 +280,69 @@ for Phase 3, not an aside.
 Three-tier plan (full design rationale, benchmark choices, and rigor notes
 were worked out in conversation; captured here for durability):
 
-- **Tier 1** — synthetic/controlled microbenchmark (parameterized CFG
-  shapes, no LLVM patch needed): isolates how the incremental-vs-full-
-  recompute cost ratio scales with function size and edit locality, free of
-  real-world variance. Not yet built.
+- **Tier 1** — synthetic/controlled microbenchmark (`bench/dt_microbench.cpp`,
+  built): isolates how the incremental-vs-full-recompute cost ratio scales
+  with function size and edit locality, free of real-world variance.
+  Deliberately a linear chain of N blocks (`entry -> bb0 -> ... ->
+  bb{N-1} -> ret`), not a more "realistic" CFG — Tier 2 already covers
+  loop/branch-factor effects from the real-program direction, and a linear
+  chain is the shape where the answer *isn't* obvious a priori: DT-depth
+  equals chain position, so inserting one block increases the DT-depth of
+  every later block by one, and whether that forces the incremental
+  updater to touch as much of the tree as a full recompute (same big-O) or
+  stays genuinely local is exactly what needed measuring. The controlled
+  edit: split the edge at block `k` (insert one new block), applied via
+  `DominatorTree::applyUpdates` (3-update batch) vs. `DominatorTree::
+  recalculate()` from scratch, timed with the same
+  `sys::Process::GetTimeUsage` CPU-time technique as Tier 2. Sweeps N in
+  `{100, 1,000, 10,000, 100,000}` and edit position `k` at `{10%, 50%, 90%}`
+  of N, 30 trials each, median reported (not mean, for the same
+  right-skew reason as Tier 2).
+
+  **Result:**
+
+  | n_blocks | edit position | incremental (median µs) | full recompute (median µs) | speedup |
+  |---|---|---|---|---|
+  | 100 | 10% | 20.0 | 29.0 | 1.4x |
+  | 100 | 50% | 8.0 | 17.0 | 2.1x |
+  | 100 | 90% | 3.0 | 14.5 | 4.8x |
+  | 1,000 | 10% | 122.5 | 144.0 | 1.2x |
+  | 1,000 | 50% | 59.0 | 148.0 | 2.5x |
+  | 1,000 | 90% | 14.0 | 149.0 | 10.6x |
+  | 10,000 | 10% | 1,031.0 | 1,396.5 | 1.4x |
+  | 10,000 | 50% | 575.5 | 1,315.0 | 2.3x |
+  | 10,000 | 90% | 128.0 | 1,341.0 | 10.5x |
+  | 100,000 | 10% | 11,523.5 | 18,816.0 | 1.6x |
+  | 100,000 | 50% | 7,182.5 | 18,585.5 | 2.6x |
+  | 100,000 | 90% | 1,192.0 | 18,955.5 | **15.9x** |
+
+  Incremental update wins in every single configuration tested — never a
+  regression. But the *margin* is not constant, and the pattern answers the
+  question the linear-chain shape was chosen to ask: **full-recompute cost
+  is essentially independent of edit position** (~14-19ms at N=100,000
+  regardless of `k`, since it always walks the whole function), while
+  **incremental cost depends heavily on how much of the tree is downstream
+  of the edit** — near the head (10%, almost the whole chain downstream),
+  incremental is only ~1.4-1.6x faster; near the tail (90%, almost nothing
+  downstream), it's ~5-16x faster and the gap *widens* with N. This
+  confirms the hypothesis in the tool's own header comment: inserting a
+  block early in a linear chain forces relabeling most of the
+  downstream subtree, so incremental update there is closer to O(N) than
+  O(1) — it's still cheaper than recompute (which also pays the printing/
+  traversal overhead recalculate() has that applyUpdates() doesn't), but
+  the "incremental is basically free" intuition only really holds near the
+  edit-adjacent, low-downstream-impact case. A real pass's actual speedup
+  will depend on where in a function's dominator structure its edits
+  typically land, not just on function size — this is not something either
+  Tier 1 or Tier 2 alone would have shown as clearly.
+
+  Reproduction: `cmake --build build --target lpta_dt_microbench && ./build/lpta_dt_microbench > trace.jsonl && python3 tools/lpta_dt_microbench_report.py trace.jsonl`.
+  Caveat: one synthetic shape (pure linear chain, unconditional branches
+  only) and one edit type (single edge split). Real passes' edits are more
+  varied (merges, multi-edge batches, edits inside loop bodies where DT
+  depth doesn't track chain position the same way) — this is a controlled
+  lower/upper bound on the mechanism's cost shape, not a claim that every
+  real edit sees exactly this speedup range.
 - **Tier 2** — real-pipeline passive measurement (built, this section):
   extends `LPTAInstrumentation.cpp` with CPU-time capture (via
   `llvm::sys::Process::GetTimeUsage`, the same technique `-time-passes`

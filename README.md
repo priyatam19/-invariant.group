@@ -107,11 +107,27 @@ cache hit emits nothing; see RESEARCH.md §8):
 Aggregate the timing data with `python3 tools/lpta_timing_report.py trace.jsonl`
 (RESEARCH.md §8's Tier 2 experiment).
 
+## Benchmarking (RESEARCH.md §8)
+
+`bench/dt_microbench.cpp` (built as the `lpta_dt_microbench` target) is a
+standalone tool, not an opt plugin: a controlled synthetic scaling-curve
+experiment comparing `DominatorTree::applyUpdates` (incremental) against
+`recalculate()` (full) across function size and edit locality.
+
+```bash
+cmake --build build --target lpta_dt_microbench
+./build/lpta_dt_microbench > microbench_trace.jsonl
+python3 tools/lpta_dt_microbench_report.py microbench_trace.jsonl
+```
+
 ## Project layout
 
 ```
 src/LPTAInstrumentation.cpp   the plugin (PassInstrumentationCallbacks hooks)
+bench/dt_microbench.cpp        standalone Tier 1 scaling-curve microbenchmark
 tools/lpta_report.py           JSONL -> self-contained HTML report
+tools/lpta_timing_report.py    Tier 2 analysis-timing aggregation
+tools/lpta_dt_microbench_report.py  Tier 1 scaling-curve aggregation
 test/sample.c, run_demo.sh     smoke test
 research/                      background research: LLVM source survey, notes
 RESEARCH.md                    API references, prior art, design rationale
