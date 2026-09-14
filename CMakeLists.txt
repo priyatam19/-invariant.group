@@ -8,6 +8,32 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Some LLVM-dev packagings (observed: Ubuntu's llvm-18-dev) export a cmake
+# dependency on an imported `zstd::libzstd_shared` target without shipping a
+# zstd cmake config to actually define it -- find_package(LLVM) below then
+# fails with "target was not found" even though the system has a perfectly
+# usable libzstd.so. Official LLVM release tarballs (e.g. the 23.1.1 one
+# tools/install_llvm23.sh fetches) don't hit this; only define the target
+# ourselves, and only if it's genuinely missing, so this is a no-op there.
+if(NOT TARGET zstd::libzstd_shared)
+  find_library(LPTA_SYSTEM_ZSTD NAMES zstd)
+  if(NOT LPTA_SYSTEM_ZSTD)
+    # No -dev package, so no unversioned libzstd.so symlink either -- fall
+    # back to the versioned runtime lib (present via the plain "zstd"/
+    # "libzstd1" runtime package).
+    file(GLOB LPTA_ZSTD_VERSIONED
+      /usr/lib/*/libzstd.so.1 /usr/lib/libzstd.so.1 /usr/lib64/libzstd.so.1)
+    if(LPTA_ZSTD_VERSIONED)
+      list(GET LPTA_ZSTD_VERSIONED 0 LPTA_SYSTEM_ZSTD)
+    endif()
+  endif()
+  if(LPTA_SYSTEM_ZSTD)
+    add_library(zstd::libzstd_shared SHARED IMPORTED)
+    set_target_properties(zstd::libzstd_shared PROPERTIES
+      IMPORTED_LOCATION "${LPTA_SYSTEM_ZSTD}")
+  endif()
+endif()
+
 # Default to the stable LLVM 23 series. An explicit LLVM_DIR also supports
 # the LLVM 18 baseline; never silently auto-select an older installation.
 if(DEFINED LLVM_DIR)
@@ -44,15 +70,15 @@ add_llvm_pass_plugin(LPTAInstrumentation
 
 # Tier 1 experiment (RESEARCH.md §8): standalone tool, not an opt plugin --
 # needs to construct/mutate IR and DominatorTree directly, which a pass
-# plugin's extension points don't allow. Link against the LLVM dylib
-# interface target directly rather than via llvm_map_components_to_libnames:
-# the latter pulls in per-component static-library exports whose transitive
-# dependency graph references an imported `zstd::libzstd_shared` target
-# this machine's llvm-18-dev package doesn't ship a resolvable cmake config
-# for (only the runtime .so, no -dev/cmake package) -- add_llvm_pass_plugin
-# avoids this because it links the single combined dylib instead.
+# plugin's extension points don't allow. llvm_map_components_to_libnames is
+# LLVM's own portable API for this: it resolves to the combined dylib when
+# an installation provides one (e.g. Ubuntu's llvm-18-dev) and to the
+# modular per-component libs otherwise (e.g. the official release tarball
+# fetched by tools/install_llvm23.sh, which ships no combined libLLVM.so at
+# all) -- linking a hardcoded `-lLLVM` here previously broke the latter.
+llvm_map_components_to_libnames(LPTA_BENCH_LIBS core support)
 add_executable(lpta_dt_microbench bench/dt_microbench.cpp)
-target_link_libraries(lpta_dt_microbench PRIVATE LLVM)
+target_link_libraries(lpta_dt_microbench PRIVATE ${LPTA_BENCH_LIBS})
 
 # Data for the demo and smoke test, in version/clang/opt/plugin order.
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/lpta-tools.txt" CONTENT
