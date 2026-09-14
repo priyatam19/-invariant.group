@@ -3,10 +3,13 @@
 LPTA records LLVM IR before and after every optimization pass, quantifies what
 each pass changed, and cross-references that change against which analyses
 the pass actually preserved. The headline signal is
-`incremental_update_candidate`: **the CFG demonstrably changed, yet
-DominatorTree was not preserved and the pass didn't just fall back to
-`PreservedAnalyses::all()`** — exactly the "conservative invalidation instead
-of incremental update" pattern described in [initial-idea.txt](initial-idea.txt).
+`incremental_update_candidate`: **the CFG demonstrably changed, DominatorTree
+was actually cached going into the pass (not merely legal to preserve), and
+it was not preserved** — exactly the "conservative invalidation instead of
+incremental update" pattern described in [initial-idea.txt](initial-idea.txt).
+The liveness requirement (ROADMAP.md Phase 2) is what keeps this from
+over-firing on a pass that never had DominatorTree computed in the first
+place — see RESEARCH.md §5 for the concrete case that motivated it.
 
 See [RESEARCH.md](RESEARCH.md) for the API/prior-art writeup,
 [ROADMAP.md](ROADMAP.md) for what's built vs. planned, and
@@ -86,6 +89,8 @@ Validate any trace against it with `python3 tools/validate_trace.py trace.jsonl`
 - `lines_added`/`lines_removed` — line-level LCS diff of the printed IR text
 - `cfg_changed` — basic-block count or total successor-edge count differs
 - `dt_preserved`, `loop_info_preserved`, `cfg_analyses_set_preserved`, `all_preserved`
+- `dt_live_before_pass`, `loop_info_live_before_pass` — was the analysis actually cached going into this pass (Phase 2)
+- `dt_wasted_recompute_count` — running count of times DominatorTree has been invalidated *and later actually recomputed* for this function so far in the trace; a real cost paid, not just a theoretical one
 - `incremental_update_candidate` — the derived signal described above
 - `invalidated` — true if the pass invalidated the IR unit outright (e.g. deleted a function); no `after_*` fields in that case
 

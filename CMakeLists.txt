@@ -52,4 +52,7 @@ if(BUILD_TESTING)
   add_test(NAME lpta-smoke COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test/check_smoke.py"
     --build-dir "${CMAKE_BINARY_DIR}" --source "${CMAKE_CURRENT_SOURCE_DIR}")
+  add_test(NAME lpta-liveness COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test/check_liveness.py"
+    --build-dir "${CMAKE_BINARY_DIR}" --source "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()

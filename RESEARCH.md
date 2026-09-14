@@ -72,6 +72,31 @@ A plugin registers callbacks from its `registerPassBuilderCallbacks` entry
 point via `PassBuilder::getPassInstrumentationCallbacks()` — no need to patch
 `opt` or LLVM itself; `-load-pass-plugin=./libFoo.so` is enough.
 
+**Phase 2 addendum — `AnalysisInvalidatedFunc` semantics, confirmed by
+reading the caller, not just the header comment.** `AnalysisManager<IRUnitT>
+::invalidate(IR, PA)` (`llvm/IR/PassManagerImpl.h`) iterates only the
+analysis results **currently cached** for that exact `IR`, calls each
+`Result.invalidate(IR, PA, Inv)`, and fires
+`PI->runAnalysisInvalidated(...)` **only for the ones that come back
+true and get erased**. It returns immediately, before touching anything,
+if `PA.allAnalysesInSetPreserved<AllAnalysesOn<IRUnitT>>()` (i.e. the pass
+returned `all()`). Consequence: `AnalysisInvalidatedCallback` is not a
+"this pass didn't preserve X" signal — it is already exactly "X was live
+and has just been thrown away." No separate liveness bookkeeping was needed
+to distinguish "never computed" from "computed then abandoned"; that
+distinction is the callback's built-in semantics. This is what Phase 2's
+`dt_live_before_pass`/`incremental_update_candidate` fix relies on.
+
+Also confirmed: `AnalysisManager<IRUnitT>::clear(IRUnitT &IR, StringRef Name)`
+(the source of `AnalysesClearedFunc`) passes our callback only a caller-
+supplied `Name` string, never the `IR` reference itself — so there is no way
+to correlate an `AnalysesCleared` event back to a specific tracked pointer
+from inside the callback alone. Phase 2 does not use this callback for that
+reason (see ROADMAP.md Phase 2); the ordering guarantee `AM.invalidate()`
+before `PassInstrumentation::runAfterPass()` (`PassManager.h`, same
+function) was the more useful fact: any invalidation a pass causes has
+already happened by the time that pass's own `AfterPass` event fires.
+
 ### 2.2 Querying `PreservedAnalyses` from outside a pass (`llvm/IR/PassManager.h`)
 
 The documented, public pattern (this is literally quoted in the header's own
@@ -174,10 +199,17 @@ glossed over: several flagged records are `SimplifyCFGPass` invocations where
 (§4) confirms does the *right* thing when DominatorTree is live. The
 resolution is that DominatorTree simply hadn't been computed/cached yet at
 that point in the pipeline, so there was nothing live to preserve —
-"invalidating" an unbuilt analysis costs nothing. **This means the current
-CFG-changed-and-not-preserved heuristic is a coarse first-pass signal, not a
-finished verdict**; Phase 2 (see ROADMAP.md) needs to cross-reference against
-`registerAfterAnalysisCallback`/`registerAnalysisInvalidatedCallback` to know
-whether DT actually had a cached result at invalidation time, which is the
-only case where discarding it is wasteful. Flagging this now so it isn't
-mistaken for a validated finding later.
+"invalidating" an unbuilt analysis costs nothing. **This meant the Phase 1
+CFG-changed-and-not-preserved heuristic was a coarse first-pass signal, not a
+finished verdict.**
+
+**Update (Phase 2, done):** liveness tracking via
+`registerAfterAnalysisCallback`/`registerAnalysisInvalidatedCallback` (see
+§2.1 addendum) fixed this. Re-running the identical sample: candidate count
+went from 15 to **3**, and all 3 remaining candidates show
+`dt_wasted_recompute_count >= 2` — DominatorTree was demonstrably rebuilt
+multiple times for those functions across the pipeline, not merely
+"theoretically preservable." The false positive described above (SimplifyCFG
+on `loopy`) is no longer flagged. See ROADMAP.md Phase 2 for the
+implementation and `docs/trace-schema.json`'s `dt_live_before_pass`/
+`dt_wasted_recompute_count` fields for the new ground truth this is based on.

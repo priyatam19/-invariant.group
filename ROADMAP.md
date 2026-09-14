@@ -25,25 +25,42 @@ Known limitations to carry into Phase 2 (not blockers, just scope):
   (`-filter-print-funcs`-equivalent — LPTA already has `LPTA_FILTER_FUNC`)
   for anything larger.
 
-## Phase 2 — Analysis-liveness-aware candidate detection
+## Phase 2 — Analysis-liveness-aware candidate detection — **DONE**
 
 Goal: fix the over-firing in Phase 1 by knowing whether an analysis was
 actually **cached** (live) at the moment a pass invalidated it, not just
 whether the pass's CFG edit was the kind DomTreeUpdater handles.
 
-- Hook `registerAfterAnalysisCallback` / `registerAnalysisInvalidatedCallback`
-  / `registerAnalysesClearedCallback` (already-verified signatures, §2.1 of
-  RESEARCH.md) to track a live/cached set of `(IR unit, analysis)` pairs
-  through the whole pipeline.
-- Recompute `incremental_update_candidate` as: CFG changed AND DominatorTree
-  was live at the start of this pass AND it was not preserved AND the pass
-  didn't return `all()`. This is the difference between "theoretically could
-  have preserved" and "actually threw away a cached, paid-for result."
-- Add a `wasted_recompute` counter: for each invalidated-but-later-requested
-  analysis, credit the trace with the cost that was actually paid to rebuild
-  it (requires pairing an `AnalysisInvalidated` event with a later
-  `BeforeAnalysis`/`AfterAnalysis` re-run of the same type on the same unit).
-  This turns "candidate" from a suspicion into a measured cost.
+Implemented in `src/LPTAInstrumentation.cpp` (`FunctionAnalysisState`,
+`afterAnalysis`/`analysisInvalidated`). Key implementation finding not
+anticipated when this phase was scoped: reading LLVM 18's
+`AnalysisManager::invalidate()` (`PassManagerImpl.h`) directly confirmed that
+`AnalysisInvalidatedCallback` **only ever fires for an analysis that was
+actually cached** — it's not a generic "this pass didn't preserve X" signal,
+it's already exactly "X was live and just got thrown away." That meant no
+separate `registerAnalysesClearedCallback` bookkeeping was needed (its
+`StringRef`-only signature can't be correlated back to a specific IR-unit
+pointer anyway — see RESEARCH.md §2.1 update) — `AfterAnalysisCallback` +
+`AnalysisInvalidatedCallback` alone give ground truth.
+
+- ~~Hook `registerAfterAnalysisCallback` / `registerAnalysisInvalidatedCallback`
+  / `registerAnalysesClearedCallback`~~ → done with the first two only, see above.
+- `incremental_update_candidate` is now: CFG changed AND DominatorTree was
+  live at the start of this pass AND it was not preserved. Verified effect on
+  the demo sample: **candidate count dropped from 15 (Phase 1) to 3** — the
+  other 12 were exactly the false-positive pattern RESEARCH.md §5 predicted
+  (DT never computed at that point in the pipeline). The 3 remaining
+  candidates all show `dt_wasted_recompute_count` >= 2, i.e. DominatorTree
+  was demonstrably rebuilt multiple times for those functions across the
+  pipeline — this is no longer a suspicion.
+- Added a `dt_wasted_recompute_count` counter (monotonic per function):
+  incremented when an invalidated DominatorTree is later actually
+  recomputed, not merely invalidated. Turns "candidate" from a suspicion
+  into a measured, cumulative cost.
+- New trace fields: `dt_live_before_pass`, `loop_info_live_before_pass`,
+  `dt_wasted_recompute_count`, `schema_version` (now `"2.0.0"` — this changed
+  `incremental_update_candidate`'s meaning, a major bump per
+  `docs/trace-schema.json`'s own versioning rule).
 
 ## Phase 3 — Static source-level triage (the "Our Proposal" engine)
 

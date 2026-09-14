@@ -50,9 +50,22 @@
     "dt_preserved": { "type": "boolean", "description": "PreservedAnalyses::getChecker<DominatorTreeAnalysis>().preserved()." },
     "loop_info_preserved": { "type": "boolean", "description": "PreservedAnalyses::getChecker<LoopAnalysis>().preserved()." },
     "cfg_analyses_set_preserved": { "type": "boolean", "description": "PreservedAnalyses::allAnalysesInSetPreserved<CFGAnalyses>()." },
+    "dt_live_before_pass": {
+      "type": "boolean",
+      "description": "Phase 2: was DominatorTree actually cached (computed and not yet invalidated) for this function immediately before this pass ran. Derived from AfterAnalysisCallback/AnalysisInvalidatedCallback tracking, not from PreservedAnalyses. This is the field that fixes Phase 1's over-firing: 'not preserved' only matters if something was there to preserve."
+    },
+    "loop_info_live_before_pass": {
+      "type": "boolean",
+      "description": "Same as dt_live_before_pass, for LoopAnalysis."
+    },
+    "dt_wasted_recompute_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Running count (monotonic within this trace) of times DominatorTree has been invalidated for this function AND later actually recomputed (i.e. some later pass asked for it again) — a measured cost, not a suspicion. 0 does not mean invalidation never happened, only that nothing has needed DT again yet."
+    },
     "incremental_update_candidate": {
       "type": "boolean",
-      "description": "Derived signal: cfg_changed && !dt_preserved. KNOWN COARSE HEURISTIC — see RESEARCH.md §5 and ROADMAP.md Phase 2: this over-fires when DominatorTree simply hadn't been computed yet (nothing live to preserve), not only when a live DT was wastefully discarded. Do not treat a true value here as a confirmed bug without Phase 2's analysis-liveness tracking."
+      "description": "Derived signal (Phase 2, liveness-aware): cfg_changed && dt_live_before_pass && !dt_preserved. Requiring liveness fixes Phase 1's coarser 'cfg_changed && !dt_preserved' (schema_version 1.0.0 records), which over-fired when DominatorTree simply hadn't been computed yet — see RESEARCH.md §5. A true value here now means DominatorTree was demonstrably cached and then discarded by a CFG-changing pass, not merely that it could theoretically have been preserved."
     },
     "seq": {
       "type": "integer",

@@ -14,6 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/CFG.h"
@@ -167,6 +168,81 @@ void diffLines(StringRef Before, StringRef After, unsigned &Added,
 }
 
 // ---------------------------------------------------------------------------
+// Analysis-liveness tracking (ROADMAP.md Phase 2).
+//
+// Phase 1's incremental_update_candidate fired on "CFG changed &&
+// !DTPreserved", which over-fires: a pass that never had DominatorTree computed
+// in the first place has nothing to wastefully throw away (see RESEARCH.md §5's
+// SimplifyCFG example). This tracks whether DominatorTree/LoopInfo were
+// actually *cached* (live) for a given Function, using two ground-truth signals
+// confirmed by reading LLVM 18's AnalysisManager::invalidate()
+// (PassManagerImpl.h):
+//   - AfterAnalysisCallback fires when an analysis is (re)computed.
+//   - AnalysisInvalidatedCallback fires ONLY when a *cached* result is
+//     actually erased as a consequence of a pass's PreservedAnalyses -- never
+//     for an analysis that was never computed. This is exactly the "was it
+//     live, and did this pass throw it away" signal Phase 2 needs; no
+//     separate bookkeeping is needed to distinguish "never computed" from
+//     "computed then abandoned."
+// Ordering: AnalysisManager::invalidate() runs before PassInstrumentation::
+// runAfterPass() for the same pass invocation (PassManager.h), so any
+// invalidation a pass causes has already updated this state by the time
+// afterPassCommon() reads it -- but we want liveness *at the start* of the
+// pass, so beforePass() snapshots it into PendingEntry before that happens.
+// ---------------------------------------------------------------------------
+
+constexpr StringLiteral DTAnalysisName = "DominatorTreeAnalysis";
+constexpr StringLiteral LoopAnalysisName = "LoopAnalysis";
+
+struct FunctionAnalysisState {
+  bool DTLive = false;
+  bool LoopInfoLive = false;
+  // Set on invalidation, cleared (and counted) on the next recompute -- this
+  // is what turns "invalidated" into "invalidated AND later actually paid
+  // for again", i.e. genuinely wasted work rather than a pass that happened
+  // to invalidate an analysis nobody ever asked for again.
+  bool DTPendingRecompute = false;
+  unsigned DTWastedRecomputes = 0;
+};
+
+DenseMap<const Function *, FunctionAnalysisState> &analysisState() {
+  static DenseMap<const Function *, FunctionAnalysisState> Map;
+  return Map;
+}
+
+void afterAnalysis(StringRef Name, const Any &IR) {
+  const Function *F = unwrapToFunction(IR);
+  if (!F)
+    return;
+  FunctionAnalysisState &St = analysisState()[F];
+  if (Name == DTAnalysisName) {
+    if (St.DTPendingRecompute) {
+      ++St.DTWastedRecomputes;
+      St.DTPendingRecompute = false;
+    }
+    St.DTLive = true;
+  } else if (Name == LoopAnalysisName) {
+    St.LoopInfoLive = true;
+  }
+}
+
+void analysisInvalidated(StringRef Name, const Any &IR) {
+  const Function *F = unwrapToFunction(IR);
+  if (!F)
+    return;
+  auto It = analysisState().find(F);
+  if (It == analysisState().end())
+    return; // Nothing was ever recorded live for this function; nothing to do.
+  FunctionAnalysisState &St = It->second;
+  if (Name == DTAnalysisName) {
+    St.DTLive = false;
+    St.DTPendingRecompute = true;
+  } else if (Name == LoopAnalysisName) {
+    St.LoopInfoLive = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Trace sink: one JSON object per pass invocation, newline-delimited.
 // ---------------------------------------------------------------------------
 
@@ -230,6 +306,8 @@ struct PendingEntry {
   ResolvedUnit Unit;
   Snapshot Before;
   bool Traced = false; // false for entries skipped by LPTA_FILTER_FUNC
+  bool DTLiveAtStart = false;
+  bool LoopInfoLiveAtStart = false;
 };
 
 std::vector<PendingEntry> &pendingStack() {
@@ -246,8 +324,16 @@ void beforePass(StringRef PassID, const Any &IR) {
   ResolvedUnit RU = resolveUnit(IR);
   bool Traced = sink().shouldTrace(RU);
   Snapshot Before = Traced ? takeSnapshot(RU) : Snapshot{};
-  pendingStack().push_back(
-      {PassID.str(), std::move(RU), std::move(Before), Traced});
+  bool DTLive = false, LoopLive = false;
+  if (RU.F) {
+    auto It = analysisState().find(RU.F);
+    if (It != analysisState().end()) {
+      DTLive = It->second.DTLive;
+      LoopLive = It->second.LoopInfoLive;
+    }
+  }
+  pendingStack().push_back({PassID.str(), std::move(RU), std::move(Before),
+                            Traced, DTLive, LoopLive});
 }
 
 void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
@@ -269,10 +355,17 @@ void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
   (void)PassID; // Identity comes from Entry; PassID is redundant here.
 
   json::Object Rec;
+  Rec["schema_version"] = "2.0.0";
   Rec["pass"] = Entry.PassID;
   Rec["unit_kind"] = Entry.Unit.Kind.str();
   Rec["unit_name"] = Entry.Unit.Name;
   Rec["invalidated"] = Invalidated;
+
+  // The IR unit is gone; any liveness state tracked for it is meaningless
+  // going forward (and, if the underlying Function's memory is ever reused,
+  // actively misleading), so drop it now rather than let it go stale.
+  if (Invalidated && Entry.Unit.F)
+    analysisState().erase(Entry.Unit.F);
 
   // When the pass invalidates its IR unit outright (e.g. deletes the
   // function), it is not safe to re-print it: skip the "after" snapshot.
@@ -309,14 +402,28 @@ void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
     if (auto *V = Rec.get("cfg_changed"))
       CFGChanged = V->getAsBoolean().value_or(false);
 
-    // The core LPTA signal: the CFG demonstrably changed, yet DominatorTree
-    // was not preserved. This is exactly the pattern the project proposal
-    // wants surfaced: a place where an explicit DomTreeUpdater call could
-    // likely have replaced a blanket invalidation. (Note: !DTPreserved
-    // already implies !AllPreserved, since getChecker<T>().preserved() is
-    // true whenever PreservedAnalyses::all() was returned — see
-    // RESEARCH.md §2.2 — so AllPreserved is kept only for its own field.)
-    Rec["incremental_update_candidate"] = CFGChanged && !DTPreserved;
+    Rec["dt_live_before_pass"] = Entry.DTLiveAtStart;
+    Rec["loop_info_live_before_pass"] = Entry.LoopInfoLiveAtStart;
+    unsigned DTWasted = 0;
+    if (Entry.Unit.F) {
+      auto It = analysisState().find(Entry.Unit.F);
+      if (It != analysisState().end())
+        DTWasted = It->second.DTWastedRecomputes;
+    }
+    Rec["dt_wasted_recompute_count"] = DTWasted;
+
+    // The core LPTA signal (Phase 2, liveness-aware): the CFG demonstrably
+    // changed, DominatorTree was actually cached going into this pass (not
+    // merely legal to preserve), and it was not preserved. Requiring
+    // liveness is what fixes Phase 1's over-firing on passes like SimplifyCFG
+    // that get flagged even though DT was never computed at that point in
+    // the pipeline, so there was nothing wasteful about "not preserving" it
+    // (see RESEARCH.md §5). (!DTPreserved already implies !AllPreserved,
+    // since getChecker<T>().preserved() is true whenever
+    // PreservedAnalyses::all() was returned — see RESEARCH.md §2.2 — so
+    // AllPreserved is kept only for its own field.)
+    Rec["incremental_update_candidate"] =
+        CFGChanged && Entry.DTLiveAtStart && !DTPreserved;
   }
 
   sink().emit(std::move(Rec));
@@ -341,6 +448,8 @@ void registerLPTACallbacks(PassBuilder &PB) {
   PIC->registerBeforeNonSkippedPassCallback(beforePass);
   PIC->registerAfterPassCallback(afterPass);
   PIC->registerAfterPassInvalidatedCallback(afterPassInvalidated);
+  PIC->registerAfterAnalysisCallback(afterAnalysis);
+  PIC->registerAnalysisInvalidatedCallback(analysisInvalidated);
 }
 
 } // namespace
