@@ -11,3 +11,4 @@ test/out/
 build-*/
 __pycache__/
 *.pyc
+research/llvm-test-suite/
