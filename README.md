@@ -79,20 +79,33 @@ must be built against that same LLVM installation.
 
 ## Trace format
 
-One JSON object per pass invocation, newline-delimited. Full contract (types,
-required fields, versioning rule): [docs/trace-schema.json](docs/trace-schema.json).
-Validate any trace against it with `python3 tools/validate_trace.py trace.jsonl`
-(`pip install jsonschema` first). Key fields:
+Two record shapes share one newline-delimited JSONL file, distinguished by
+`record_type`. Full contract (types, required fields, versioning rule):
+[docs/trace-schema.json](docs/trace-schema.json). Validate any trace against
+it with `python3 tools/validate_trace.py trace.jsonl` (`pip install
+jsonschema` first).
+
+**`record_type: "pass"`** — one per pass invocation:
 
 - `pass`, `unit_kind` (`function`/`loop`/`module`/`scc`), `unit_name`
 - `ir_changed`, `before_instr_count`/`after_instr_count`, `before_bb_count`/`after_bb_count`
 - `lines_added`/`lines_removed` — line-level LCS diff of the printed IR text
 - `cfg_changed` — basic-block count or total successor-edge count differs
 - `dt_preserved`, `loop_info_preserved`, `cfg_analyses_set_preserved`, `all_preserved`
-- `dt_live_before_pass`, `loop_info_live_before_pass` — was the analysis actually cached going into this pass (Phase 2)
-- `dt_wasted_recompute_count` — running count of times DominatorTree has been invalidated *and later actually recomputed* for this function so far in the trace; a real cost paid, not just a theoretical one
-- `incremental_update_candidate` — the derived signal described above
+- `dt_live_before_pass`, `loop_info_live_before_pass`, `memoryssa_live_before_pass`, `scev_live_before_pass` — was the analysis actually cached going into this pass (Phase 2)
+- `dt_wasted_recompute_count` (+ `memoryssa_`/`scev_` equivalents) — running count of times the analysis has been invalidated *and later actually recomputed* for this function so far in the trace; a real cost paid, not just a theoretical one
+- `incremental_update_candidate` — the derived signal described above (DominatorTree-specific; see RESEARCH.md §8 for the broader MemorySSA/ScalarEvolution picture)
 - `invalidated` — true if the pass invalidated the IR unit outright (e.g. deleted a function); no `after_*` fields in that case
+
+**`record_type: "analysis"`** — one per actual analysis (re)computation (a
+cache hit emits nothing; see RESEARCH.md §8):
+
+- `analysis` — `DominatorTreeAnalysis`/`LoopAnalysis`/`MemorySSAAnalysis`/`ScalarEvolutionAnalysis`
+- `cpu_time_us` — process CPU time (user+sys) spent computing it, same technique as `-time-passes`
+- `wasted_recompute` — true if this recompute followed an invalidation nothing needed until now
+
+Aggregate the timing data with `python3 tools/lpta_timing_report.py trace.jsonl`
+(RESEARCH.md §8's Tier 2 experiment).
 
 ## Project layout
 

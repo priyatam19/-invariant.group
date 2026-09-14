@@ -213,3 +213,119 @@ multiple times for those functions across the pipeline, not merely
 on `loopy`) is no longer flagged. See ROADMAP.md Phase 2 for the
 implementation and `docs/trace-schema.json`'s `dt_live_before_pass`/
 `dt_wasted_recompute_count` fields for the new ground truth this is based on.
+
+## 6. What actually depends on DominatorTree, and does updating it cascade?
+
+Read the real `invalidate()` implementations in `llvm/lib/Analysis/*.cpp`
+(via the `research/llvm-project` clone from §4) rather than assume. Answer:
+**there is no automatic cascade; every dependent analysis needs its own
+explicit preservation, and LLVM uses two genuinely different mechanisms for
+different dependents:**
+
+- **`LoopInfo`, `BranchProbabilityInfo`, `RegionInfo`** — each `invalidate()`
+  (e.g. `LoopInfo::invalidate`, `LoopInfo.cpp:941`) checks *only* its own
+  analysis type's checker against `preserved()`, `AllAnalysesOn<Function>`,
+  or the `CFGAnalyses` bundle set. **It never looks at
+  `DominatorTreeAnalysis`'s status at all.** Correctly, incrementally
+  updating DT and calling `.preserve<DominatorTreeAnalysis>()` buys these
+  three nothing — each needs its own separate `.preserve<T>()` (or the
+  `CFGAnalyses` bundle) or it's discarded and rebuilt regardless of how
+  correct DT is.
+- **`MemorySSA`, `ScalarEvolution`** — use LLVM's `Invalidator` mechanism
+  instead: `MemorySSAAnalysis::Result::invalidate` (`MemorySSA.cpp:2376`) is
+  `!(own-preserved || all()) || Inv.invalidate<AAManager>(...) ||
+  Inv.invalidate<DominatorTreeAnalysis>(...)`;
+  `ScalarEvolution::invalidate` (`ScalarEvolution.cpp:15100`) adds
+  `Inv.invalidate<LoopAnalysis>`/`Inv.invalidate<AssumptionAnalysis>` too.
+  This is a **one-way safety net, not a free ride**: if DT (or AA, or
+  LoopInfo) actually dies, these are forced to die too even if a pass
+  incorrectly claimed to preserve them — but correctly preserving DT is
+  still necessary, never sufficient, for MemorySSA/SCEV to survive; each
+  still needs its own explicit preservation as well.
+- `PostDominatorTree` is fully independent (`PostDominators.cpp:43`) — its
+  own separate computation, not derived from `DominatorTree`.
+- Asymmetry worth flagging: `LoopInfo`/`BranchProbabilityInfo`/`RegionInfo`
+  don't hook the `Invalidator` at all, so there's no engine-level
+  consistency check tying them to DT's real status the way MemorySSA/SCEV
+  get. A pass could in principle claim `.preserveSet<CFGAnalyses>()` while
+  its DT update was subtly wrong, and the framework wouldn't catch the
+  inconsistency for those three the way it would for MemorySSA/SCEV.
+
+Practical consequence for the original thesis: the real cost `none()`
+wastes usually isn't DominatorTree's own recomputation (near-linear,
+genuinely fast) — it's that a bare `none()` needlessly drags down MemorySSA
+and ScalarEvolution too, both markedly more expensive to rebuild, purely
+because nobody added the extra `.preserve<T>()` calls. §8 measures this
+directly.
+
+## 7. Production LLVM vs. teaching/research pass code
+
+Does production LLVM's code review discipline make automated
+DT-update-opportunity detection more tractable than it would be against
+arbitrary out-of-tree code? Full study, with citations, in
+[research/production_vs_teaching_comparison.md](research/production_vs_teaching_comparison.md).
+Headline: yes, but for a narrow, concrete reason — production's CFG edits
+converge on a small, stable, *named* Utils-function surface (53/341 files,
+~8 function names); none of three surveyed non-reviewed corpora
+(`llvm-tutor`, a personal loop-unroller, a real university course
+assignment) converge on that same surface, each for a different reason
+(different-but-still-standard helpers, fully raw `BranchInst` surgery, or
+no CFG edits at all). A Phase 3 AST-matcher tuned on production call-site
+names should work well against `llvm/lib/Transforms` but needs a materially
+different approach for arbitrary out-of-tree code — a scoping constraint
+for Phase 3, not an aside.
+
+## 8. Experiment design: is incremental update actually cheaper?
+
+Three-tier plan (full design rationale, benchmark choices, and rigor notes
+were worked out in conversation; captured here for durability):
+
+- **Tier 1** — synthetic/controlled microbenchmark (parameterized CFG
+  shapes, no LLVM patch needed): isolates how the incremental-vs-full-
+  recompute cost ratio scales with function size and edit locality, free of
+  real-world variance. Not yet built.
+- **Tier 2** — real-pipeline passive measurement (built, this section):
+  extends `LPTAInstrumentation.cpp` with CPU-time capture (via
+  `llvm::sys::Process::GetTimeUsage`, the same technique `-time-passes`
+  uses — process user+sys CPU time, not wall-clock, since wall-clock on a
+  shared/virtualized sandbox picks up scheduling noise this metric avoids)
+  around every actual `BeforeAnalysis`/`AfterAnalysis` (re)computation of
+  the four tracked analyses (DominatorTree, LoopInfo, MemorySSA,
+  ScalarEvolution — confirmed these callbacks fire only around a genuine
+  cache miss by reading `AnalysisManager::getResultImpl`'s `if (Inserted)`
+  gate in `PassManagerImpl.h`, never on a cache hit). Emits a new
+  `record_type: "analysis"` trace row per (re)computation with `cpu_time_us`
+  and `wasted_recompute` (paired with the existing invalidate-then-recompute
+  tracking from Phase 2, generalized from DT-only to all four analyses).
+  `tools/lpta_timing_report.py` aggregates this into the headline number: what
+  fraction of measured analysis-recompute CPU time was spent on a recompute
+  that followed an invalidation nothing needed until it became needed again.
+  **First result, on the 3-function demo sample** (small-N, not yet a real
+  benchmark — see caveat below): repeated runs land in the **30-35%** range
+  for total measured CPU time across the four analyses spent on wasted
+  recomputes (DominatorTree alone: roughly two-thirds, out of 10 of 14
+  computes flagged `wasted_recompute` — that *count* is exact and stable
+  across runs, unlike the CPU-time percentage). The run-to-run drift in the
+  timing percentage itself (33.0% one run, 34.6% another, same trace
+  regenerated seconds apart) is direct empirical confirmation of the noise
+  caveat below, not a bug — deliberately reporting a range here rather than
+  a single misleadingly-precise number. Real magnitude requires Tier 2 run
+  against `llvm-test-suite` or comparable real programs — at this sample's
+  scale, individual `cpu_time_us` values (single-digit microseconds) are
+  plausibly at or below OS timer-resolution noise; the *count*-based
+  wasted-recompute signal is
+  real and discrete, but the *timing* numbers at this scale are indicative
+  only, not conclusive.
+- **Tier 3** — A/B with a real source patch (gated on Phase 3/4, not yet
+  buildable): the only tier that actually proves a specific fix helps.
+  Checked whether instrumentation alone could simulate this (have the
+  plugin intercept and rewrite a pass's returned `PreservedAnalyses` before
+  the pass manager acts on it) — confirmed this is not possible:
+  `AnalysisManager::invalidate()` runs *before* `PassInstrumentation::
+  runAfterPass()` for the same pass invocation (`PassManager.h`), so
+  invalidation has already happened by the time any plugin callback could
+  observe or react to it. Tier 3 genuinely requires a source patch (e.g. add
+  the missing `.preserve<DominatorTreeAnalysis>()` to
+  `ControlHeightReduction.cpp:2128`, per §4's top candidate) and two rebuilt
+  `opt` binaries compared end-to-end — exactly ROADMAP.md Phase 4's scope,
+  not a shortcut around it.
