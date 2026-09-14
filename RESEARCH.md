@@ -435,3 +435,113 @@ were worked out in conversation; captured here for durability):
   `ControlHeightReduction.cpp:2128`, per §4's top candidate) and two rebuilt
   `opt` binaries compared end-to-end — exactly ROADMAP.md Phase 4's scope,
   not a shortcut around it.
+
+## 9. Full census: every NPM pass/analysis, and why the IR-changing ones do or don't preserve
+
+§4's survey was narrowly scoped (files in `llvm/lib/Transforms` that mutate
+CFG *and* return bare `none()` *and* have zero `DomTreeUpdater` usage). This
+answers a broader, six-part question directly: how many passes/analyses does
+NPM know about at all, does a real pipeline run "all of them," how many of
+what runs can change IR, how many of those preserve nothing vs. something,
+*how* do the preservers preserve, and *why* do the non-preservers not. Full
+report with every citation: [research/full_pass_census.md](research/full_pass_census.md)
+(static census, reused the `research/llvm-project` checkout, sparse-checkout
+widened to add `llvm/lib/Passes` + `llvm/lib/CodeGen` + `llvm/lib/IR`).
+Headline answers, each exact/sampled as marked:
+
+1. **Total registered** (exact, full-file parse of `PassRegistry.def`, 460
+   macro invocations): **377 pass registrations / 72 analysis registrations**
+   (367/67 distinct name-strings after dedup across IR-unit granularities,
+   429 distinct names in the union).
+2. **Does `-O2` run "all of these"?** No — **only 75 of 429 (~17%)** appear
+   in `opt -passes='default<O2>' -print-pipeline-passes`'s expansion (71
+   leaf passes + 4 required/invalidated analyses). **Confirmed
+   heavily repeated**: `simplifycfg`/`instcombine` each appear **8×**,
+   `sroa`/`licm` **4×** each — and critically, the repeats aren't identical:
+   `sroa` runs with `modify-cfg` params early and `preserve-cfg` late, a real
+   behavioral difference the raw count alone hides.
+3. **Of those 71, how many can change IR?** **67** (94%). The 4 that can't
+   despite `*_PASS` registration are worth naming since they're easy to
+   mistake for transforms: `VerifierPass`, `AnnotationRemarksPass`,
+   `RecomputeGlobalsAAPass`, `WarnMissedTransformationsPass` — all read in
+   full, none mutate the `Module`/`Function`/`BasicBlock` itself.
+4. **Of the 67: bare `none()` vs. preserve something?** **13** unconditional
+   `none()`-on-change, **39** granular `PreservedAnalyses PA`-builder (28 of
+   those specifically via `.preserveSet<CFGAnalyses>()`), **11** delegate to
+   a shared helper, and **4 surprising cases return unconditional `all()`
+   despite genuinely mutating IR** — 2 of those 4 justify it in a comment
+   (attribute/metadata-only changes), 2 don't (see below). A literal-text
+   `grep -c "PreservedAnalyses::none()"` gets this wrong in *both*
+   directions: it over-counts `GlobalOptPass` (uses `none()` only as a
+   starting value, immediately refined — the exact trap §4's own survey
+   already flagged for this same file) and it under-counts entirely, missing
+   37 of the 39 PA-builder passes that write the semantically-identical
+   `PreservedAnalyses PA;` (default-constructed) instead of the literal
+   string. Grep-only tooling cannot get an exact count here; this report's
+   exactness comes from reading all 67 `run()` bodies.
+5. **How do the 50 preservers preserve** (sampled 35/50, per task): **~17**
+   via live `DomTreeUpdater`/incremental-update-then-preserve, **~9** never
+   touch the CFG at all (trivially safe — e.g. `ReassociatePass` only
+   reorders arithmetic within existing blocks), **11** delegate to
+   `getLoopPassPreservedAnalyses()` or a pass-local equivalent (confirming
+   §4's Caveat #2 generalizes: this helper-indirection pattern is common,
+   not a one-off). These buckets overlap in practice — most loop passes
+   thread a genuinely live `DominatorTree`/`MemorySSA` through their own
+   logic *and* delegate the final packaging to the shared helper.
+6. **Why do the bare-`none()` passes not preserve** (sampled 21 of 61
+   available): **~13** genuinely global/structural (new functions from
+   outlining, merged/deleted functions, rewritten call-graph edges — no
+   incremental-update object exists for "part of a function became a new
+   function"), **5** explicitly discuss the tradeoff in a comment, **4**
+   conservative with no comment and apparent headroom, **2** touch CFG via
+   a Utils helper (`SplitBlockAndInsertIfThen`) not in either survey's fixed
+   keyword list, itself a finding about the limits of keyword-based
+   detection.
+
+**Two concrete findings worth flagging on their own:**
+- **`CalledValuePropagationPass`** (`CalledValuePropagation.cpp:405-410`)
+  computes a real `Changed` bool inside its own `runCVP()` helper and then
+  **discards the return value**, unconditionally returning
+  `PreservedAnalyses::all()` regardless. Not merely conservative — the
+  signal needed to do this correctly is computed and then thrown away, with
+  no comment explaining why.
+- **`AddDiscriminators.cpp:241-249`** is the strongest self-flagged case
+  found in either survey: `// FIXME: should be all()` sits directly above
+  `return PreservedAnalyses::none();`. The pass only attaches DWARF
+  discriminator metadata (confirmed by reading `addDiscriminators` in
+  full) — no functional IR change at all. The author has already written
+  down that the current code is wrong.
+
+### Dynamic cross-check (this session, not the census report)
+
+Ran the real corpus already built for §8 Tier 2 (8 `llvm-test-suite`
+programs + the demo sample, 15,592 pass-record invocations, 87 distinct
+pass names in this specific run) through LPTA itself, independent of the
+static census above, to see how well "what the source says" matches "what
+actually happens":
+
+- Confirms repetition is real at execution time too, not just in the
+  pipeline-text expansion: `SimplifyCFGPass` 1,033 invocations,
+  `InstCombinePass` 1,032, `LoopSimplifyPass`/`LCSSAPass` 645 each.
+- **46 of 87** distinct pass names changed IR at least once on this corpus;
+  of those, **44** showed `all_preserved=false` at least once (i.e. almost
+  none blanket-preserve when they actually change something) — the 2
+  exceptions (`DeadArgumentEliminationPass`, `InferAlignmentPass`) were
+  checked by hand and are legitimate: single-line, non-structural edits with
+  identical before/after instruction counts.
+- **A genuine gap the static census could not have found on its own**:
+  `SimplifyCFGPass` — one of the census's own positive `DomTreeUpdater`
+  examples — still shows `dt_live_before_pass=true && dt_preserved=false`
+  in **236 real invocations** across this corpus (raw records inspected
+  directly, not a proxy). This isn't a contradiction of the static finding;
+  `SimplifyCFGPass`'s preservation is conditional in its own source
+  ("if used, preserve" — §4/§9's positive-example citation), and real
+  executions frequently take internal branches that don't thread through
+  that machinery. The lesson: a pass having correct incremental-update
+  *code* is necessary but not sufficient evidence it *reliably* preserves
+  on real inputs — only running real code surfaces which fraction of the
+  time the good path actually fires. This is exactly the kind of gap
+  ROADMAP.md Phase 3's static matcher will need to be honest about (it can
+  find the machinery exists; it cannot, by itself, show how often the
+  machinery is actually exercised on real programs — that needs LPTA's own
+  dynamic trace, cross-referenced the way it was here).
