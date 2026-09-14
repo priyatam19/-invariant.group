@@ -37,6 +37,23 @@ compatibility matrix it was validated against (PRODUCTIONIZATION.md §1).
   production LLVM's code-review discipline make automated detection more
   tractable than against out-of-tree code? yes, and RESEARCH.md §7/§6
   explains the concrete why).
+- **Tier 1 synthetic microbenchmark** (`bench/dt_microbench.cpp`, new
+  `lpta_dt_microbench` CMake target + `tools/lpta_dt_microbench_report.py`):
+  controlled linear-chain scaling curve for `DominatorTree::applyUpdates`
+  vs. `recalculate()`. Incremental update won in every configuration tested
+  (100 to 100,000 blocks × 3 edit positions), but the margin ranged from
+  1.4x to 15.9x depending on edit locality relative to dominator-tree
+  depth, not just function size — see RESEARCH.md §8.
+
+### Verified against real programs
+- Tier 2 run against 8 real `llvm-test-suite` benchmarks (not just the
+  demo sample): **66.2% of measured analysis-recompute CPU time was spent
+  on wasted recomputes**, an order of magnitude more measured CPU time
+  than the demo sample. MemorySSA has the lowest wasted-fraction (55.8%)
+  but by far the highest absolute cost (~2x DominatorTree's) — the
+  expensive part is the MemorySSA/ScalarEvolution cascade, not
+  DominatorTree's own recomputation, exactly as RESEARCH.md §6 predicted
+  and now measured. See RESEARCH.md §8.
 
 ### Changed
 - **`incremental_update_candidate` semantics (schema_version 1.0.0 → 2.0.0,

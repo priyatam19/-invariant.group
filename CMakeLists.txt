@@ -42,6 +42,18 @@ add_llvm_pass_plugin(LPTAInstrumentation
   src/LPTAInstrumentation.cpp
 )
 
+# Tier 1 experiment (RESEARCH.md §8): standalone tool, not an opt plugin --
+# needs to construct/mutate IR and DominatorTree directly, which a pass
+# plugin's extension points don't allow. Link against the LLVM dylib
+# interface target directly rather than via llvm_map_components_to_libnames:
+# the latter pulls in per-component static-library exports whose transitive
+# dependency graph references an imported `zstd::libzstd_shared` target
+# this machine's llvm-18-dev package doesn't ship a resolvable cmake config
+# for (only the runtime .so, no -dev/cmake package) -- add_llvm_pass_plugin
+# avoids this because it links the single combined dylib instead.
+add_executable(lpta_dt_microbench bench/dt_microbench.cpp)
+target_link_libraries(lpta_dt_microbench PRIVATE LLVM)
+
 # Data for the demo and smoke test, in version/clang/opt/plugin order.
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/lpta-tools.txt" CONTENT
   "${LLVM_PACKAGE_VERSION}\n${LPTA_clang}\n${LPTA_opt}\n$<TARGET_FILE:LPTAInstrumentation>\n")
