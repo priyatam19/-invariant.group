@@ -7,6 +7,15 @@ compatibility matrix it was validated against (PRODUCTIONIZATION.md §1).
 ## [Unreleased]
 
 ### Added
+- **Pass-execution CPU timing** (`pass_cpu_time_us` on `record_type: "pass"`
+  records, schema 2.1.0 → 2.2.0): times each pass's own `Pass::run()` call,
+  distinct from Tier 2's existing analysis-recompute timing. Used to answer
+  RESEARCH.md §10: the 13 bare-`none()` passes from §9 account for only
+  0.007% of total measured pass-execution CPU time on an 8-program real
+  corpus, and 10 of the 13 never even exercise their invalidating path at
+  all on non-coroutine, non-OpenMP C code (they always return `all()`
+  because there's nothing to do). Not a meaningful optimization target,
+  unlike the DT-focused candidates in §4.
 - LLVM New Pass Manager instrumentation plugin (`src/LPTAInstrumentation.cpp`):
   records IR before/after every pass, quantifies the change, and flags
   `incremental_update_candidate` events per the project's core hypothesis.

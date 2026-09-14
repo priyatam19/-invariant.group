@@ -88,6 +88,7 @@ jsonschema` first).
 **`record_type: "pass"`** — one per pass invocation:
 
 - `pass`, `unit_kind` (`function`/`loop`/`module`/`scc`), `unit_name`
+- `pass_cpu_time_us` — CPU time spent in the pass's own execution (RESEARCH.md §10)
 - `ir_changed`, `before_instr_count`/`after_instr_count`, `before_bb_count`/`after_bb_count`
 - `lines_added`/`lines_removed` — line-level LCS diff of the printed IR text
 - `cfg_changed` — basic-block count or total successor-edge count differs

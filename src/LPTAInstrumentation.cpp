@@ -369,7 +369,7 @@ void afterAnalysis(StringRef Name, const Any &IR) {
   T.TotalCPUTimeUs += ElapsedUs;
 
   json::Object Rec;
-  Rec["schema_version"] = "2.1.0";
+  Rec["schema_version"] = "2.2.0";
   Rec["record_type"] = "analysis";
   Rec["analysis"] = Name.str();
   Rec["unit_kind"] = "function";
@@ -406,6 +406,13 @@ struct PendingEntry {
   bool LoopInfoLiveAtStart = false;
   bool MemorySSALiveAtStart = false;
   bool ScalarEvolutionLiveAtStart = false;
+  // Captured *after* our own before-snapshot work is done, so the delta to
+  // afterPassCommon()'s first action (captured *before* any of our own
+  // after-work) isolates the pass's own Pass::run() execution time --
+  // excludes LPTA's own instrumentation overhead on both sides, the same
+  // bracketing discipline verified for analysis timing (Tier 2).
+  std::chrono::nanoseconds PassStartUser{};
+  std::chrono::nanoseconds PassStartSys{};
 };
 
 std::vector<PendingEntry> &pendingStack() {
@@ -431,12 +438,29 @@ void beforePass(StringRef PassID, const Any &IR) {
   bool LoopLive = isLiveAtStart(RU.F, LoopAnalysisName);
   bool MSSALive = isLiveAtStart(RU.F, MemorySSAAnalysisName);
   bool SCEVLive = isLiveAtStart(RU.F, ScalarEvolutionAnalysisName);
+  // Start the pass-execution clock last, right before control returns to
+  // the pass manager (which immediately calls Pass::run()) -- everything
+  // above this point is LPTA's own before-snapshot work and must not be
+  // counted as part of the pass's own time.
+  sys::TimePoint<> Now;
+  std::chrono::nanoseconds StartUser, StartSys;
+  sys::Process::GetTimeUsage(Now, StartUser, StartSys);
   pendingStack().push_back({PassID.str(), std::move(RU), std::move(Before),
-                            Traced, DTLive, LoopLive, MSSALive, SCEVLive});
+                            Traced, DTLive, LoopLive, MSSALive, SCEVLive,
+                            StartUser, StartSys});
 }
 
 void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
                      bool Invalidated) {
+  // Stop the clock first, before any of LPTA's own after-work (the After
+  // snapshot, diffing, etc.) can contaminate the measured pass-execution
+  // time. Stack-empty/untraced entries below discard this; the small
+  // wasted GetTimeUsage() call in that (rare, error/filtered) case is not
+  // worth branching around.
+  sys::TimePoint<> Now;
+  std::chrono::nanoseconds EndUser, EndSys;
+  sys::Process::GetTimeUsage(Now, EndUser, EndSys);
+
   auto &Stack = pendingStack();
   if (Stack.empty()) {
     // Before/After calls are expected to be strictly paired (see the stack
@@ -453,13 +477,19 @@ void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
     return;
   (void)PassID; // Identity comes from Entry; PassID is redundant here.
 
+  auto PassDelta =
+      (EndUser - Entry.PassStartUser) + (EndSys - Entry.PassStartSys);
+  uint64_t PassCPUTimeUs =
+      std::chrono::duration_cast<std::chrono::microseconds>(PassDelta).count();
+
   json::Object Rec;
-  Rec["schema_version"] = "2.1.0";
+  Rec["schema_version"] = "2.2.0";
   Rec["record_type"] = "pass";
   Rec["pass"] = Entry.PassID;
   Rec["unit_kind"] = Entry.Unit.Kind.str();
   Rec["unit_name"] = Entry.Unit.Name;
   Rec["invalidated"] = Invalidated;
+  Rec["pass_cpu_time_us"] = PassCPUTimeUs;
 
   // The IR unit is gone; any liveness state tracked for it is meaningless
   // going forward (and, if the underlying Function's memory is ever reused,
