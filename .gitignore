@@ -1,5 +1,8 @@
 build/
 research/llvm-project/
+research/llvm-tutor/
+research/loop-unroll-mfaerevaag/
+research/dceandlicm-cs380c/
 test/out/
 *.jsonl
 !test/fixtures/*.jsonl

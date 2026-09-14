@@ -63,10 +63,15 @@ def main():
     if not rows:
         raise RuntimeError("empty trace")
 
-    if any(r.get("schema_version") != "2.0.0" for r in rows if "schema_version" in r):
-        raise RuntimeError("schema_version regressed below 2.0.0")
+    def major_version(record):
+        v = record.get("schema_version")
+        return int(v.split(".")[0]) if v else None
 
-    candidates = [r for r in rows if r.get("incremental_update_candidate")]
+    if any(major_version(r) is not None and major_version(r) < 2 for r in rows):
+        raise RuntimeError("schema_version regressed below major version 2")
+
+    pass_records = [r for r in rows if r.get("record_type", "pass") == "pass"]
+    candidates = [r for r in pass_records if r.get("incremental_update_candidate")]
     if not candidates:
         raise RuntimeError(
             "expected at least one incremental_update_candidate on the sample "

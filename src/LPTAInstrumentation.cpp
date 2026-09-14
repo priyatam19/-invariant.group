@@ -15,8 +15,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/MemorySSA.h"
+#include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
@@ -30,8 +33,10 @@
 #endif
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <memory>
 #include <vector>
@@ -168,82 +173,9 @@ void diffLines(StringRef Before, StringRef After, unsigned &Added,
 }
 
 // ---------------------------------------------------------------------------
-// Analysis-liveness tracking (ROADMAP.md Phase 2).
-//
-// Phase 1's incremental_update_candidate fired on "CFG changed &&
-// !DTPreserved", which over-fires: a pass that never had DominatorTree computed
-// in the first place has nothing to wastefully throw away (see RESEARCH.md §5's
-// SimplifyCFG example). This tracks whether DominatorTree/LoopInfo were
-// actually *cached* (live) for a given Function, using two ground-truth signals
-// confirmed by reading LLVM 18's AnalysisManager::invalidate()
-// (PassManagerImpl.h):
-//   - AfterAnalysisCallback fires when an analysis is (re)computed.
-//   - AnalysisInvalidatedCallback fires ONLY when a *cached* result is
-//     actually erased as a consequence of a pass's PreservedAnalyses -- never
-//     for an analysis that was never computed. This is exactly the "was it
-//     live, and did this pass throw it away" signal Phase 2 needs; no
-//     separate bookkeeping is needed to distinguish "never computed" from
-//     "computed then abandoned."
-// Ordering: AnalysisManager::invalidate() runs before PassInstrumentation::
-// runAfterPass() for the same pass invocation (PassManager.h), so any
-// invalidation a pass causes has already updated this state by the time
-// afterPassCommon() reads it -- but we want liveness *at the start* of the
-// pass, so beforePass() snapshots it into PendingEntry before that happens.
-// ---------------------------------------------------------------------------
-
-constexpr StringLiteral DTAnalysisName = "DominatorTreeAnalysis";
-constexpr StringLiteral LoopAnalysisName = "LoopAnalysis";
-
-struct FunctionAnalysisState {
-  bool DTLive = false;
-  bool LoopInfoLive = false;
-  // Set on invalidation, cleared (and counted) on the next recompute -- this
-  // is what turns "invalidated" into "invalidated AND later actually paid
-  // for again", i.e. genuinely wasted work rather than a pass that happened
-  // to invalidate an analysis nobody ever asked for again.
-  bool DTPendingRecompute = false;
-  unsigned DTWastedRecomputes = 0;
-};
-
-DenseMap<const Function *, FunctionAnalysisState> &analysisState() {
-  static DenseMap<const Function *, FunctionAnalysisState> Map;
-  return Map;
-}
-
-void afterAnalysis(StringRef Name, const Any &IR) {
-  const Function *F = unwrapToFunction(IR);
-  if (!F)
-    return;
-  FunctionAnalysisState &St = analysisState()[F];
-  if (Name == DTAnalysisName) {
-    if (St.DTPendingRecompute) {
-      ++St.DTWastedRecomputes;
-      St.DTPendingRecompute = false;
-    }
-    St.DTLive = true;
-  } else if (Name == LoopAnalysisName) {
-    St.LoopInfoLive = true;
-  }
-}
-
-void analysisInvalidated(StringRef Name, const Any &IR) {
-  const Function *F = unwrapToFunction(IR);
-  if (!F)
-    return;
-  auto It = analysisState().find(F);
-  if (It == analysisState().end())
-    return; // Nothing was ever recorded live for this function; nothing to do.
-  FunctionAnalysisState &St = It->second;
-  if (Name == DTAnalysisName) {
-    St.DTLive = false;
-    St.DTPendingRecompute = true;
-  } else if (Name == LoopAnalysisName) {
-    St.LoopInfoLive = false;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Trace sink: one JSON object per pass invocation, newline-delimited.
+// Defined here (ahead of analysis-liveness tracking below) because
+// afterAnalysis() emits an "analysis" record directly to it.
 // ---------------------------------------------------------------------------
 
 class TraceSink {
@@ -297,6 +229,170 @@ TraceSink &sink() {
 }
 
 // ---------------------------------------------------------------------------
+// Analysis-liveness tracking (ROADMAP.md Phase 2).
+//
+// Phase 1's incremental_update_candidate fired on "CFG changed &&
+// !DTPreserved", which over-fires: a pass that never had DominatorTree computed
+// in the first place has nothing to wastefully throw away (see RESEARCH.md §5's
+// SimplifyCFG example). This tracks whether DominatorTree/LoopInfo were
+// actually *cached* (live) for a given Function, using two ground-truth signals
+// confirmed by reading LLVM 18's AnalysisManager::invalidate()
+// (PassManagerImpl.h):
+//   - AfterAnalysisCallback fires when an analysis is (re)computed.
+//   - AnalysisInvalidatedCallback fires ONLY when a *cached* result is
+//     actually erased as a consequence of a pass's PreservedAnalyses -- never
+//     for an analysis that was never computed. This is exactly the "was it
+//     live, and did this pass throw it away" signal Phase 2 needs; no
+//     separate bookkeeping is needed to distinguish "never computed" from
+//     "computed then abandoned."
+// Ordering: AnalysisManager::invalidate() runs before PassInstrumentation::
+// runAfterPass() for the same pass invocation (PassManager.h), so any
+// invalidation a pass causes has already updated this state by the time
+// afterPassCommon() reads it -- but we want liveness *at the start* of the
+// pass, so beforePass() snapshots it into PendingEntry before that happens.
+// ---------------------------------------------------------------------------
+
+constexpr StringLiteral DTAnalysisName = "DominatorTreeAnalysis";
+constexpr StringLiteral LoopAnalysisName = "LoopAnalysis";
+constexpr StringLiteral MemorySSAAnalysisName = "MemorySSAAnalysis";
+constexpr StringLiteral ScalarEvolutionAnalysisName = "ScalarEvolutionAnalysis";
+
+// The four Function-keyed analyses we track. MemorySSA/ScalarEvolution are
+// the "cascade cost" half of the thesis (see RESEARCH.md/PRODUCTIONIZATION.md
+// experiment notes): a bare PreservedAnalyses::none() doesn't just discard a
+// cheap-to-rebuild DominatorTree, it drags these down too even though the
+// pass's edit may have nothing to do with memory or induction-variable
+// reasoning. BranchProbabilityInfo/RegionInfo are real dependents too (see
+// RESEARCH.md §2 addendum) but are deliberately out of scope here to keep
+// this first timing pass focused on the two analyses actually expensive
+// enough to matter for a wall-clock experiment.
+bool isTrackedAnalysis(StringRef Name) {
+  return Name == DTAnalysisName || Name == LoopAnalysisName ||
+         Name == MemorySSAAnalysisName || Name == ScalarEvolutionAnalysisName;
+}
+
+struct AnalysisTiming {
+  bool Live = false;
+  // Set on invalidation, cleared (and counted) on the next recompute -- this
+  // is what turns "invalidated" into "invalidated AND later actually paid
+  // for again", i.e. genuinely wasted work rather than a pass that happened
+  // to invalidate an analysis nobody ever asked for again.
+  bool PendingRecompute = false;
+  unsigned WastedRecomputes = 0;
+  uint64_t LastComputeCPUTimeUs = 0;
+  uint64_t TotalCPUTimeUs = 0;
+};
+
+DenseMap<const Function *, StringMap<AnalysisTiming>> &analysisState() {
+  static DenseMap<const Function *, StringMap<AnalysisTiming>> Map;
+  return Map;
+}
+
+AnalysisTiming *getAnalysisTiming(const Function *F, StringRef Name) {
+  auto It = analysisState().find(F);
+  if (It == analysisState().end())
+    return nullptr;
+  auto NameIt = It->second.find(Name);
+  if (NameIt == It->second.end())
+    return nullptr;
+  return &NameIt->second;
+}
+
+// ---------------------------------------------------------------------------
+// Analysis-compute CPU timing (Tier 2 experiment: is the wasted-recompute
+// signal actually expensive in wall-clock terms, and how much of that is
+// DominatorTree itself vs. the more expensive MemorySSA/ScalarEvolution
+// cascade). Uses process CPU time (user+sys via getrusage, the same
+// technique LLVM's own -time-passes uses), not wall-clock: this sandbox is a
+// shared, noisy machine, and CPU time is far less susceptible to scheduling
+// jitter than steady_clock wall time.
+//
+// Before/AfterAnalysis fire strictly around the actual (re)computation --
+// confirmed by reading AnalysisManager::getResultImpl (PassManagerImpl.h):
+// both calls are skipped entirely on a cache hit (`if (Inserted)` gates all
+// of it), so this stack captures computation cost only, never cache-lookup
+// overhead, and Before/After are strictly paired the same way pass-level
+// Before/After are.
+// ---------------------------------------------------------------------------
+
+struct PendingAnalysis {
+  std::string Name;
+  const Function *F; // may be null if this analysis isn't Function-keyed
+  std::chrono::nanoseconds StartUser;
+  std::chrono::nanoseconds StartSys;
+};
+
+std::vector<PendingAnalysis> &analysisTimingStack() {
+  static std::vector<PendingAnalysis> Stack;
+  return Stack;
+}
+
+void beforeAnalysis(StringRef Name, const Any &IR) {
+  sys::TimePoint<> Now;
+  std::chrono::nanoseconds User, Sys;
+  sys::Process::GetTimeUsage(Now, User, Sys);
+  analysisTimingStack().push_back(
+      {Name.str(), unwrapToFunction(IR), User, Sys});
+}
+
+void afterAnalysis(StringRef Name, const Any &IR) {
+  auto &Stack = analysisTimingStack();
+  uint64_t ElapsedUs = 0;
+  if (Stack.empty()) {
+    errs() << "LPTA: after-analysis callback for '" << Name
+           << "' with no matching before-analysis snapshot; timing dropped\n";
+  } else {
+    PendingAnalysis P = std::move(Stack.back());
+    Stack.pop_back();
+    sys::TimePoint<> Now;
+    std::chrono::nanoseconds User, Sys;
+    sys::Process::GetTimeUsage(Now, User, Sys);
+    auto Delta = (User - P.StartUser) + (Sys - P.StartSys);
+    ElapsedUs =
+        std::chrono::duration_cast<std::chrono::microseconds>(Delta).count();
+  }
+
+  if (!isTrackedAnalysis(Name))
+    return;
+  const Function *F = unwrapToFunction(IR);
+  if (!F)
+    return;
+
+  AnalysisTiming &T = analysisState()[F][Name];
+  bool Wasted = T.PendingRecompute;
+  if (Wasted) {
+    ++T.WastedRecomputes;
+    T.PendingRecompute = false;
+  }
+  T.Live = true;
+  T.LastComputeCPUTimeUs = ElapsedUs;
+  T.TotalCPUTimeUs += ElapsedUs;
+
+  json::Object Rec;
+  Rec["schema_version"] = "2.1.0";
+  Rec["record_type"] = "analysis";
+  Rec["analysis"] = Name.str();
+  Rec["unit_kind"] = "function";
+  Rec["unit_name"] = F->getName().str();
+  Rec["cpu_time_us"] = ElapsedUs;
+  Rec["wasted_recompute"] = Wasted;
+  sink().emit(std::move(Rec));
+}
+
+void analysisInvalidated(StringRef Name, const Any &IR) {
+  if (!isTrackedAnalysis(Name))
+    return;
+  const Function *F = unwrapToFunction(IR);
+  if (!F)
+    return;
+  AnalysisTiming *T = getAnalysisTiming(F, Name);
+  if (!T)
+    return; // Nothing was ever recorded live for this function; nothing to do.
+  T->Live = false;
+  T->PendingRecompute = true;
+}
+
+// ---------------------------------------------------------------------------
 // Pending "before" state, matched LIFO with the corresponding "after" event
 // (pass execution is a synchronous call stack, so a stack is sufficient).
 // ---------------------------------------------------------------------------
@@ -308,6 +404,8 @@ struct PendingEntry {
   bool Traced = false; // false for entries skipped by LPTA_FILTER_FUNC
   bool DTLiveAtStart = false;
   bool LoopInfoLiveAtStart = false;
+  bool MemorySSALiveAtStart = false;
+  bool ScalarEvolutionLiveAtStart = false;
 };
 
 std::vector<PendingEntry> &pendingStack() {
@@ -320,20 +418,21 @@ std::vector<PendingEntry> &pendingStack() {
 // (pass execution is a synchronous call stack). We always push here, even
 // for units LPTA_FILTER_FUNC excludes, so the stack stays balanced and the
 // matching "after" call can be identified purely by position, never by name.
+bool isLiveAtStart(const Function *F, StringRef Name) {
+  AnalysisTiming *T = F ? getAnalysisTiming(F, Name) : nullptr;
+  return T && T->Live;
+}
+
 void beforePass(StringRef PassID, const Any &IR) {
   ResolvedUnit RU = resolveUnit(IR);
   bool Traced = sink().shouldTrace(RU);
   Snapshot Before = Traced ? takeSnapshot(RU) : Snapshot{};
-  bool DTLive = false, LoopLive = false;
-  if (RU.F) {
-    auto It = analysisState().find(RU.F);
-    if (It != analysisState().end()) {
-      DTLive = It->second.DTLive;
-      LoopLive = It->second.LoopInfoLive;
-    }
-  }
+  bool DTLive = isLiveAtStart(RU.F, DTAnalysisName);
+  bool LoopLive = isLiveAtStart(RU.F, LoopAnalysisName);
+  bool MSSALive = isLiveAtStart(RU.F, MemorySSAAnalysisName);
+  bool SCEVLive = isLiveAtStart(RU.F, ScalarEvolutionAnalysisName);
   pendingStack().push_back({PassID.str(), std::move(RU), std::move(Before),
-                            Traced, DTLive, LoopLive});
+                            Traced, DTLive, LoopLive, MSSALive, SCEVLive});
 }
 
 void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
@@ -355,7 +454,8 @@ void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
   (void)PassID; // Identity comes from Entry; PassID is redundant here.
 
   json::Object Rec;
-  Rec["schema_version"] = "2.0.0";
+  Rec["schema_version"] = "2.1.0";
+  Rec["record_type"] = "pass";
   Rec["pass"] = Entry.PassID;
   Rec["unit_kind"] = Entry.Unit.Kind.str();
   Rec["unit_name"] = Entry.Unit.Name;
@@ -404,13 +504,19 @@ void afterPassCommon(StringRef PassID, const PreservedAnalyses *PA,
 
     Rec["dt_live_before_pass"] = Entry.DTLiveAtStart;
     Rec["loop_info_live_before_pass"] = Entry.LoopInfoLiveAtStart;
-    unsigned DTWasted = 0;
-    if (Entry.Unit.F) {
-      auto It = analysisState().find(Entry.Unit.F);
-      if (It != analysisState().end())
-        DTWasted = It->second.DTWastedRecomputes;
-    }
-    Rec["dt_wasted_recompute_count"] = DTWasted;
+    Rec["memoryssa_live_before_pass"] = Entry.MemorySSALiveAtStart;
+    Rec["scev_live_before_pass"] = Entry.ScalarEvolutionLiveAtStart;
+
+    auto wastedCount = [&](StringRef Name) -> unsigned {
+      AnalysisTiming *T =
+          Entry.Unit.F ? getAnalysisTiming(Entry.Unit.F, Name) : nullptr;
+      return T ? T->WastedRecomputes : 0;
+    };
+    Rec["dt_wasted_recompute_count"] = wastedCount(DTAnalysisName);
+    Rec["memoryssa_wasted_recompute_count"] =
+        wastedCount(MemorySSAAnalysisName);
+    Rec["scev_wasted_recompute_count"] =
+        wastedCount(ScalarEvolutionAnalysisName);
 
     // The core LPTA signal (Phase 2, liveness-aware): the CFG demonstrably
     // changed, DominatorTree was actually cached going into this pass (not
@@ -448,6 +554,7 @@ void registerLPTACallbacks(PassBuilder &PB) {
   PIC->registerBeforeNonSkippedPassCallback(beforePass);
   PIC->registerAfterPassCallback(afterPass);
   PIC->registerAfterPassInvalidatedCallback(afterPassInvalidated);
+  PIC->registerBeforeAnalysisCallback(beforeAnalysis);
   PIC->registerAfterAnalysisCallback(afterAnalysis);
   PIC->registerAnalysisInvalidatedCallback(analysisInvalidated);
 }

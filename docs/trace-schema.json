@@ -2,35 +2,46 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/priyatam19/-invariant.group/blob/main/docs/trace-schema.json",
   "title": "LPTA trace record",
-  "description": "One line of the JSONL trace emitted by src/LPTAInstrumentation.cpp: one object per pass invocation. schema_version follows independent SemVer from the tool itself — see the versioning note below. A new OPTIONAL field is a minor bump; a renamed/removed field or a changed meaning for an existing field is a major bump, and both old and new meanings must be documented in RESEARCH.md/CHANGELOG.md for at least one release cycle.",
+  "description": "One line of the JSONL trace emitted by src/LPTAInstrumentation.cpp. Two record shapes share one file, distinguished by record_type: 'pass' (one per pass invocation, the original Phase 1/2 record) and 'analysis' (one per actual analysis (re)computation -- Tier 2 timing experiment, added in 2.1.0). schema_version follows independent SemVer from the tool itself. A new OPTIONAL field, or a new record_type value existing consumers can safely ignore, is a minor bump; a renamed/removed field or a changed meaning for an existing field is a major bump, and both old and new meanings must be documented in RESEARCH.md/CHANGELOG.md for at least one release cycle.",
   "type": "object",
-  "required": ["pass", "unit_kind", "unit_name", "invalidated", "seq"],
+  "required": ["record_type", "unit_kind", "unit_name", "seq"],
   "properties": {
     "schema_version": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
-      "description": "SemVer of this schema. Records without this field predate versioning (schema_version 1.0.0, retroactively)."
+      "description": "SemVer of this schema. Records without this field predate versioning (schema_version 1.0.0, retroactively). Records with record_type absent entirely predate the pass/analysis split (schema_version < 2.1.0) and should be treated as record_type='pass'."
     },
-    "pass": {
+    "record_type": {
       "type": "string",
-      "description": "LLVM pass name as reported by PassInstrumentation, e.g. 'SimplifyCFGPass'."
+      "enum": ["pass", "analysis"],
+      "description": "'pass': one pass invocation (Phase 1/2 fields below). 'analysis': one actual analysis (re)computation with CPU timing (Tier 2 fields below)."
     },
     "unit_kind": {
       "type": "string",
       "enum": ["function", "loop", "module", "scc", "unknown"],
-      "description": "Granularity of the IR unit this pass ran on."
+      "description": "Granularity of the IR unit. 'analysis' records are always 'function' (the four tracked analyses -- DominatorTreeAnalysis, LoopAnalysis, MemorySSAAnalysis, ScalarEvolutionAnalysis -- are all Function-keyed)."
     },
     "unit_name": {
       "type": "string",
       "description": "Identifies the IR unit: bare function name for 'function' AND 'loop' kind (see the report layer's report_group_key() for why a viewer needs unit_kind too, not unit_name alone, to distinguish them), '<module:NAME>' for module, '<scc:...>' for SCC, '<unknown>' otherwise."
     },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonically increasing per-process sequence number, shared across both record types, assigned at emit time. Use this to order events within one trace file; do not assume it's stable across separate runs/LLVM versions."
+    },
+
+    "pass": {
+      "type": "string",
+      "description": "record_type='pass' only. LLVM pass name as reported by PassInstrumentation, e.g. 'SimplifyCFGPass'."
+    },
     "invalidated": {
       "type": "boolean",
-      "description": "True if the pass invalidated its IR unit outright (e.g. deleted a function). When true, none of the after_*/ir_changed/cfg_changed fields are present — the unit could not be safely re-printed."
+      "description": "record_type='pass' only. True if the pass invalidated its IR unit outright (e.g. deleted a function). When true, none of the after_*/ir_changed/cfg_changed fields are present — the unit could not be safely re-printed."
     },
     "ir_changed": {
       "type": "boolean",
-      "description": "Before/after printed IR text differs. Absent when invalidated=true."
+      "description": "record_type='pass' only. Before/after printed IR text differs. Absent when invalidated=true."
     },
     "before_instr_count": { "type": "integer", "minimum": 0 },
     "after_instr_count": { "type": "integer", "minimum": 0 },
@@ -39,38 +50,57 @@
     "lines_added": {
       "type": "integer",
       "minimum": 0,
-      "description": "Line-level LCS diff of printed IR text; 0 when ir_changed=false. Falls back to a multiset approximation for module-scale text (see diffLines()'s size cap in LPTAInstrumentation.cpp) — treat as approximate above roughly 2000x2000 lines."
+      "description": "record_type='pass' only. Line-level LCS diff of printed IR text; 0 when ir_changed=false. Falls back to a multiset approximation for module-scale text (see diffLines()'s size cap in LPTAInstrumentation.cpp) — treat as approximate above roughly 2000x2000 lines."
     },
     "lines_removed": { "type": "integer", "minimum": 0 },
     "cfg_changed": {
       "type": "boolean",
-      "description": "Proxy signal: true if before/after basic-block count OR total successor-edge count differs. Not exact CFG isomorphism (see ROADMAP.md Phase 1 known limitations)."
+      "description": "record_type='pass' only. Proxy signal: true if before/after basic-block count OR total successor-edge count differs. Not exact CFG isomorphism (see ROADMAP.md Phase 1 known limitations)."
     },
-    "all_preserved": { "type": "boolean", "description": "PreservedAnalyses::areAllPreserved() at the end of this pass." },
-    "dt_preserved": { "type": "boolean", "description": "PreservedAnalyses::getChecker<DominatorTreeAnalysis>().preserved()." },
-    "loop_info_preserved": { "type": "boolean", "description": "PreservedAnalyses::getChecker<LoopAnalysis>().preserved()." },
-    "cfg_analyses_set_preserved": { "type": "boolean", "description": "PreservedAnalyses::allAnalysesInSetPreserved<CFGAnalyses>()." },
+    "all_preserved": { "type": "boolean", "description": "record_type='pass' only. PreservedAnalyses::areAllPreserved() at the end of this pass." },
+    "dt_preserved": { "type": "boolean", "description": "record_type='pass' only. PreservedAnalyses::getChecker<DominatorTreeAnalysis>().preserved()." },
+    "loop_info_preserved": { "type": "boolean", "description": "record_type='pass' only. PreservedAnalyses::getChecker<LoopAnalysis>().preserved()." },
+    "cfg_analyses_set_preserved": { "type": "boolean", "description": "record_type='pass' only. PreservedAnalyses::allAnalysesInSetPreserved<CFGAnalyses>()." },
     "dt_live_before_pass": {
       "type": "boolean",
-      "description": "Phase 2: was DominatorTree actually cached (computed and not yet invalidated) for this function immediately before this pass ran. Derived from AfterAnalysisCallback/AnalysisInvalidatedCallback tracking, not from PreservedAnalyses. This is the field that fixes Phase 1's over-firing: 'not preserved' only matters if something was there to preserve."
+      "description": "record_type='pass' only. Phase 2: was DominatorTree actually cached (computed and not yet invalidated) for this function immediately before this pass ran. Derived from AfterAnalysisCallback/AnalysisInvalidatedCallback tracking, not from PreservedAnalyses. This is the field that fixes Phase 1's over-firing: 'not preserved' only matters if something was there to preserve."
     },
     "loop_info_live_before_pass": {
       "type": "boolean",
-      "description": "Same as dt_live_before_pass, for LoopAnalysis."
+      "description": "record_type='pass' only. Same as dt_live_before_pass, for LoopAnalysis."
+    },
+    "memoryssa_live_before_pass": {
+      "type": "boolean",
+      "description": "record_type='pass' only (2.1.0+). Same as dt_live_before_pass, for MemorySSAAnalysis -- one of the two 'cascade cost' analyses the Tier 2 experiment is specifically about (see RESEARCH.md/PRODUCTIONIZATION.md experiment notes: MemorySSA/ScalarEvolution are the expensive analyses a bare none() needlessly drags down, not DominatorTree itself)."
+    },
+    "scev_live_before_pass": {
+      "type": "boolean",
+      "description": "record_type='pass' only (2.1.0+). Same as dt_live_before_pass, for ScalarEvolutionAnalysis."
     },
     "dt_wasted_recompute_count": {
       "type": "integer",
       "minimum": 0,
-      "description": "Running count (monotonic within this trace) of times DominatorTree has been invalidated for this function AND later actually recomputed (i.e. some later pass asked for it again) — a measured cost, not a suspicion. 0 does not mean invalidation never happened, only that nothing has needed DT again yet."
+      "description": "record_type='pass' only. Running count (monotonic within this trace) of times DominatorTree has been invalidated for this function AND later actually recomputed (i.e. some later pass asked for it again) — a measured cost, not a suspicion. 0 does not mean invalidation never happened, only that nothing has needed DT again yet."
     },
+    "memoryssa_wasted_recompute_count": { "type": "integer", "minimum": 0, "description": "record_type='pass' only (2.1.0+). Same as dt_wasted_recompute_count, for MemorySSAAnalysis." },
+    "scev_wasted_recompute_count": { "type": "integer", "minimum": 0, "description": "record_type='pass' only (2.1.0+). Same as dt_wasted_recompute_count, for ScalarEvolutionAnalysis." },
     "incremental_update_candidate": {
       "type": "boolean",
-      "description": "Derived signal (Phase 2, liveness-aware): cfg_changed && dt_live_before_pass && !dt_preserved. Requiring liveness fixes Phase 1's coarser 'cfg_changed && !dt_preserved' (schema_version 1.0.0 records), which over-fired when DominatorTree simply hadn't been computed yet — see RESEARCH.md §5. A true value here now means DominatorTree was demonstrably cached and then discarded by a CFG-changing pass, not merely that it could theoretically have been preserved."
+      "description": "record_type='pass' only. Derived signal (Phase 2, liveness-aware): cfg_changed && dt_live_before_pass && !dt_preserved. Requiring liveness fixes Phase 1's coarser 'cfg_changed && !dt_preserved' (schema_version 1.0.0 records), which over-fired when DominatorTree simply hadn't been computed yet — see RESEARCH.md §5. A true value here now means DominatorTree was demonstrably cached and then discarded by a CFG-changing pass, not merely that it could theoretically have been preserved. Deliberately still DT-specific, not redefined to also cover MemorySSA/ScalarEvolution waste -- those are surfaced via the memoryssa_*/scev_* fields and the 'analysis' record_type instead, to avoid another meaning change to this specific field."
     },
-    "seq": {
+
+    "analysis": {
+      "type": "string",
+      "description": "record_type='analysis' only (2.1.0+). Which analysis was (re)computed: one of 'DominatorTreeAnalysis', 'LoopAnalysis', 'MemorySSAAnalysis', 'ScalarEvolutionAnalysis' (the four tracked; see LPTAInstrumentation.cpp's isTrackedAnalysis() -- BranchProbabilityInfo/RegionInfo are real DT dependents too but out of scope for this first timing pass)."
+    },
+    "cpu_time_us": {
       "type": "integer",
       "minimum": 0,
-      "description": "Monotonically increasing per-process sequence number, assigned at emit time. Use this to order events within one trace file; do not assume it's stable across separate runs/LLVM versions."
+      "description": "record_type='analysis' only. Process CPU time (user+sys, via llvm::sys::Process::GetTimeUsage -- the same technique LLVM's own -time-passes uses) spent in this specific (re)computation. Deliberately CPU time, not wall-clock: wall-clock on a shared/virtualized machine picks up scheduling noise this metric is built to avoid. On trivially small inputs this can be at or below OS timer-resolution noise -- treat single-digit-microsecond values as approximate; the signal is far more reliable on real, larger programs."
+    },
+    "wasted_recompute": {
+      "type": "boolean",
+      "description": "record_type='analysis' only. True if this specific (re)computation followed an invalidation of this analysis for this function that was never actually needed until now becoming needed again -- i.e. this specific compute's CPU time is the measured cost of Phase 2's dt_wasted_recompute_count (or the memoryssa_/scev_ equivalents) incrementing. Only ever true for a recompute that would not have been necessary had the prior pass preserved this analysis."
     }
   }
 }
