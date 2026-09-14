@@ -44,6 +44,18 @@ compatibility matrix it was validated against (PRODUCTIONIZATION.md §1).
   (100 to 100,000 blocks × 3 edit positions), but the margin ranged from
   1.4x to 15.9x depending on edit locality relative to dominator-tree
   depth, not just function size — see RESEARCH.md §8.
+- Research: `research/full_pass_census.md` (RESEARCH.md §9) — a complete
+  census of every NPM-registered pass/analysis (449 total), what a real
+  `-O2` invocation actually schedules (75, ~17%) and how much it repeats
+  (`simplifycfg`/`instcombine` 8× each), and a full preservation-mechanism
+  breakdown of the 67 IR-changing passes that run: 13 bare `none()`, 39
+  granular preserve, 11 helper-delegated, 4 surprising unconditional
+  `all()`. Cross-checked against real dynamic trace data from this
+  project's own corpus, which surfaced a gap static analysis alone
+  couldn't: `SimplifyCFGPass` has correct `DomTreeUpdater` code but still
+  fails to preserve a live DominatorTree in 236 real invocations, because
+  its preservation is conditional on which internal branch a given edit
+  takes.
 
 ### Verified against real programs
 - Tier 2 run against 8 real `llvm-test-suite` benchmarks (not just the
